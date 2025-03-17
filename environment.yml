@@ -13,3 +13,4 @@ dependencies:
   - keras
   - pip
   - import_ipynb
+  - statsmodels

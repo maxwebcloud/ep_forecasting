@@ -12,3 +12,4 @@ dependencies:
   - tensorflow
   - keras
   - pip
+  - import_ipynb

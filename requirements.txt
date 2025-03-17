@@ -6,6 +6,5 @@ seaborn
 statsmodels
 tensorflow
 xgboost
-warnings
 scikit-learn
 keras

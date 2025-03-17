@@ -1,6 +1,11 @@
-keras
-matplotlib
-numpy
+#os
 pandas
-scikit-learn
+numpy
+matplotlib
+seaborn
+statsmodels
 tensorflow
+xgboost
+warnings
+scikit-learn
+keras

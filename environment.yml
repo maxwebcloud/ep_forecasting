@@ -12,5 +12,5 @@ dependencies:
   - tensorflow
   - keras
   - pip
-  #- import_ipynb can be only installed using pip (not conda) 
+  #- import_ipynb Requires pip – not available via conda
   - statsmodels

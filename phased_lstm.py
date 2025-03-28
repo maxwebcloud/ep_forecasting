@@ -117,6 +117,7 @@ class PhasedLSTM(nn.Module):
             sequence: The input sequence data of shape (batch, time, N)
             times: The timestamps corresponding to the data of shape (batch, time)
         """
+        print(f"u_sequence shape: {u_sequence.shape}")
 
         c0 = u_sequence.new_zeros((self.bi, u_sequence.size(0), self.hidden_size))
         h0 = u_sequence.new_zeros((self.bi, u_sequence.size(0), self.hidden_size))
@@ -124,7 +125,8 @@ class PhasedLSTM(nn.Module):
 
         outputs = []
         for i in range(u_sequence.size(1)):
-            u_t = u_sequence[:, i, :-1].unsqueeze(1)
+            #u_t = u_sequence[:, i, 0:-1].unsqueeze(1) if u_sequence.size(-1) > 1 else u_sequence[:, i, 0].unsqueeze(1).unsqueeze(-1)
+            u_t = u_sequence[:, i, :-1].unsqueeze(1) 
             t_t = u_sequence[:, i, -1]
 
             out, (c_t, h_t) = self.lstm(u_t, (c0, h0))

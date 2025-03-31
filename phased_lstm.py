@@ -1,141 +1,203 @@
+import torch
+from torch import nn
 import math
 
-import torch
-import torch.nn as nn
+OFF_SLOPE=1e-3
+
+# function to extract grad
+def set_grad(var):
+    def hook(grad):
+        var.grad = grad
+    return hook
 
 
-
-class PhasedLSTMCell(nn.Module):
-    """Phased LSTM recurrent network cell.
-    https://arxiv.org/pdf/1610.09513v1.pdf
+class GradMod(torch.autograd.Function):
     """
+    We can implement our own custom autograd Functions by subclassing
+    torch.autograd.Function and implementing the forward and backward passes
+    which operate on Tensors.
+    """
+    @staticmethod
+    def forward(ctx, input, other):
+        """
+        In the forward pass we receive a Tensor containing the input and return a
+        Tensor containing the output. You can cache arbitrary Tensors for use in the
+        backward pass using the save_for_backward method.
+        """
+        result = torch.fmod(input, other)
+        ctx.save_for_backward(input, other)
+        return result
 
-    def __init__(
-        self,
-        hidden_size,
-        leak=0.001,
-        ratio_on=0.1,
-        period_init_min=1.0,
-        period_init_max=1000.0
-    ):
+    @staticmethod
+    def backward(ctx, grad_output):
         """
-        Args:
-            hidden_size: int, The number of units in the Phased LSTM cell.
-            leak: float or scalar float Tensor with value in [0, 1]. Leak applied
-                during training.
-            ratio_on: float or scalar float Tensor with value in [0, 1]. Ratio of the
-                period during which the gates are open.
-            period_init_min: float or scalar float Tensor. With value > 0.
-                Minimum value of the initialized period.
-                The period values are initialized by drawing from the distribution:
-                e^U(log(period_init_min), log(period_init_max))
-                Where U(.,.) is the uniform distribution.
-            period_init_max: float or scalar float Tensor.
-                With value > period_init_min. Maximum value of the initialized period.
+        In the backward pass we receive a Tensor containing the gradient of the loss
+        with respect to the output, and we need to compute the gradient of the loss
+        with respect to the input.
         """
+        x, y = ctx.saved_variables
+        return grad_output * 1, grad_output * torch.neg(torch.floor_divide(x, y))
+
+class PLSTM(nn.Module):
+    def __init__(self, hidden_sz, input_sz):
         super().__init__()
+        self.input_sz = input_sz
+        self.hidden_size = hidden_sz
+        self.Periods = nn.Parameter(torch.Tensor(hidden_sz, 1))
+        self.Shifts = nn.Parameter(torch.Tensor(hidden_sz, 1))
+        self.On_End = nn.Parameter(torch.Tensor(hidden_sz, 1))
+        self.W = nn.Parameter(torch.Tensor(input_sz, hidden_sz * 4))
+        self.U = nn.Parameter(torch.Tensor(hidden_sz, hidden_sz * 4))
+        self.bias = nn.Parameter(torch.Tensor(hidden_sz * 4))
+        self.bias.data[hidden_sz:hidden_sz*2].fill_(1.0)
 
-        self.hidden_size = hidden_size
-        self.ratio_on = ratio_on
-        self.leak = leak
+        self.init_weights()
 
-        # initialize time-gating parameters
-        period = torch.exp(
-            torch.Tensor(hidden_size).uniform_(
-                math.log(period_init_min), math.log(period_init_max)
+        self.layer_norm_i = torch.nn.LayerNorm(normalized_shape=hidden_sz)
+        self.layer_norm_f = torch.nn.LayerNorm(normalized_shape=hidden_sz)
+        self.layer_norm_g = torch.nn.LayerNorm(normalized_shape=hidden_sz)
+        self.layer_norm_o = torch.nn.LayerNorm(normalized_shape=hidden_sz)
+
+        stdv = 1.0 / math.sqrt(self.hidden_size)
+
+        self.h_0 = torch.nn.Parameter(
+            torch.FloatTensor(hidden_sz).uniform_(-stdv, stdv)
+        )
+        self.c_0 = torch.nn.Parameter(
+            torch.FloatTensor(hidden_sz).uniform_(-stdv, stdv)
+        )
+
+    def init_weights(self):
+        stdv = 1.0 / math.sqrt(self.hidden_size)
+        for weight in self.parameters():
+            weight.data.uniform_(-stdv, stdv)
+        # Phased LSTM
+        # -----------------------------------------------------
+        nn.init.constant_(self.On_End, 0.05) # Set to be 5% "open"
+        nn.init.uniform_(self.Shifts, 0, 100) # Have a wide spread of shifts
+        # Uniformly distribute periods in log space between exp(1, 3)
+        self.Periods.data.copy_(torch.exp((3 - 1) *
+            torch.rand(self.Periods.shape) + 1))
+        # -----------------------------------------------------
+
+    def forward(self, x,
+                init_states=None):
+        """Assumes x is of shape (batch, sequence, feature)"""
+        bs, seq_sz, _ = x.size()
+        ts = torch.zeros(bs, seq_sz).to(x.device)
+        hidden_seq = []
+        if init_states is None:
+            # h_t, c_t = (torch.zeros(bs, self.hidden_size).to(x.device),
+            #             torch.zeros(bs, self.hidden_size).to(x.device))
+            h_t, c_t = (self.h_0.expand(bs, self.hidden_size).to(x.device),
+                        self.c_0.expand(bs, self.hidden_size).to(x.device))
+        else:
+            h_t, c_t = init_states
+
+        # PHASED LSTM
+        # -----------------------------------------------------
+        # Precalculate some useful vars
+        shift_broadcast = self.Shifts.view(1, -1)
+        period_broadcast = abs(self.Periods.view(1, -1))
+        on_mid_broadcast = abs(self.On_End.view(1, -1)) * 0.5 * period_broadcast
+        on_end_broadcast = abs(self.On_End.view(1, -1)) * period_broadcast
+
+        def calc_time_gate(time_input_n):
+            # Broadcast the time across all units
+            t_broadcast = time_input_n.unsqueeze(-1)
+            # Get the time within the period
+            in_cycle_time = GradMod.apply(t_broadcast + shift_broadcast, period_broadcast)
+
+            # Find the phase
+            is_up_phase = torch.le(in_cycle_time, on_mid_broadcast)
+            is_down_phase = torch.gt(in_cycle_time, on_mid_broadcast)*torch.le(in_cycle_time, on_end_broadcast)
+
+
+            # Set the mask
+            sleep_wake_mask = torch.where(is_up_phase, in_cycle_time/on_mid_broadcast,
+                                torch.where(is_down_phase,
+                                    (on_end_broadcast-in_cycle_time)/on_mid_broadcast,
+                                        OFF_SLOPE*(in_cycle_time/period_broadcast)))
+            return sleep_wake_mask
+        # -----------------------------------------------------
+
+        HS = self.hidden_size
+        for t in range(seq_sz):
+            old_c_t = c_t
+            old_h_t = h_t
+            x_t = x[:, t, :]
+            t_t = ts[:, t]
+            # batch the computations into a single matrix multiplication
+            gates = x_t @ self.W + h_t @ self.U + self.bias
+
+            i_t, f_t, g_t, o_t = (
+                torch.sigmoid(gates[:, :HS]), # input
+                torch.sigmoid(gates[:, HS:HS*2]), # forget
+                torch.tanh(gates[:, HS*2:HS*3]),
+                torch.sigmoid(gates[:, HS*3:]), # output
             )
-        )
-        self.tau = nn.Parameter(period)
+            # i_t, f_t, g_t, o_t = (
+            #     torch.sigmoid(self.layer_norm_i.forward(gates[:, :HS])), # input
+            #     torch.sigmoid(self.layer_norm_f.forward(gates[:, HS:HS*2])), # forget
+            #     torch.tanh(self.layer_norm_g.forward(gates[:, HS*2:HS*3])),
+            #     torch.sigmoid(self.layer_norm_o.forward(gates[:, HS*3:])), # output
+            # )
+            c_t = f_t * c_t + i_t * g_t
+            h_t = o_t * torch.tanh(c_t)
 
-        phase = torch.Tensor(hidden_size).uniform_() * period
-        self.phase = nn.Parameter(phase)
-
-    def _compute_phi(self, t):
-        t_ = t.view(-1, 1).repeat(1, self.hidden_size)
-        phase_ = self.phase.view(1, -1).repeat(t.shape[0], 1)
-        tau_ = self.tau.view(1, -1).repeat(t.shape[0], 1)
-
-        phi = torch.fmod((t_ - phase_), tau_).detach()
-        phi = torch.abs(phi) / tau_
-        return phi
-
-    def _mod(self, x, y):
-        """Modulo function that propagates x gradients."""
-        return x + (torch.fmod(x, y) - x).detach()
-
-    def set_state(self, c, h):
-        self.h0 = h
-        self.c0 = c
-
-    def forward(self, c_s, h_s, t):
-        # print(c_s.size(), h_s.size(), t.size())
-        phi = self._compute_phi(t)
-
-        # Phase-related augmentations
-        k_up = 2 * phi / self.ratio_on
-        k_down = 2 - k_up
-        k_closed = self.leak * phi
-
-        k = torch.where(phi < self.ratio_on, k_down, k_closed)
-        k = torch.where(phi < 0.5 * self.ratio_on, k_up, k)
-        k = k.view(c_s.shape[0], t.shape[0], -1)
-
-        c_s_new = k * c_s + (1 - k) * self.c0
-        h_s_new = k * h_s + (1 - k) * self.h0
-
-        return h_s_new, c_s_new
+            # PHASED LSTM
+            # -----------------------------------------------------
+            # Get time gate openness
+            sleep_wake_mask = calc_time_gate(t_t)
+            # Sleep if off, otherwise stay a bit on
+            c_t = sleep_wake_mask*c_t + (1. - sleep_wake_mask)*old_c_t
+            h_t = sleep_wake_mask*h_t + (1. - sleep_wake_mask)*old_h_t
+            # -----------------------------------------------------
+            hidden_seq.append(h_t.unsqueeze(0))
+        hidden_seq = torch.cat(hidden_seq, dim=0)
+        # reshape from shape (sequence, batch, feature) to (batch, sequence, feature)
+        hidden_seq = hidden_seq.transpose(0, 1).contiguous()
+        # return hidden_seq, (h_t, c_t)
+        return hidden_seq
 
 
-class PhasedLSTM(nn.Module):
-    """Wrapper for multi-layer sequence forwarding via
-       PhasedLSTMCell"""
-
-    def __init__(
-        self,
-        input_size,
-        hidden_size,
-        bidirectional=True
-    ):
+class Model(torch.nn.Module):
+    def __init__(self, args):
         super().__init__()
-        self.hidden_size = hidden_size
+        self.args = args
 
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            bidirectional=bidirectional,
-            batch_first=True
-        )
-        self.bi = 2 if bidirectional else 1
-
-        self.phased_cell = PhasedLSTMCell(
-            hidden_size=self.bi * hidden_size
+        self.ff = torch.nn.Sequential(
+            torch.nn.Linear(in_features=4, out_features=args.hidden_size),
+            torch.nn.BatchNorm1d(num_features=args.sequence_len)
         )
 
-    def forward(self, u_sequence):
-        """
-        Args:
-            sequence: The input sequence data of shape (batch, time, N)
-            times: The timestamps corresponding to the data of shape (batch, time)
-        """
-        print(f"u_sequence shape: {u_sequence.shape}")
+        layers = []
+        for _ in range(args.lstm_layers):
+            layers.append(PLSTM(
+                input_sz=args.hidden_size,
+                hidden_sz=args.hidden_size,
+            ))
+        self.lstm = torch.nn.Sequential(*layers)
 
-        c0 = u_sequence.new_zeros((self.bi, u_sequence.size(0), self.hidden_size))
-        h0 = u_sequence.new_zeros((self.bi, u_sequence.size(0), self.hidden_size))
-        self.phased_cell.set_state(c0, h0)
+        self.fc = torch.nn.Sequential(
+            torch.nn.Linear(in_features=args.hidden_size, out_features=args.hidden_size),
+            torch.nn.BatchNorm1d(num_features=args.sequence_len),
+            torch.nn.Mish(),
+            torch.nn.Linear(in_features=args.hidden_size, out_features=4)
+        )
 
-        outputs = []
-        for i in range(u_sequence.size(1)):
-            #u_t = u_sequence[:, i, 0:-1].unsqueeze(1) if u_sequence.size(-1) > 1 else u_sequence[:, i, 0].unsqueeze(1).unsqueeze(-1)
-            u_t = u_sequence[:, i, :-1].unsqueeze(1) 
-            t_t = u_sequence[:, i, -1]
+    def forward(self, x):
+        # B, Seq, F => B, 28, 28
+        z_0 = self.ff.forward(x)
 
-            out, (c_t, h_t) = self.lstm(u_t, (c0, h0))
-            (c_s, h_s) = self.phased_cell(c_t, h_t, t_t)
+        z_1_layers = []
+        for i in range(self.args.lstm_layers):
+            z_1_layers.append(self.lstm[i].forward(z_0))
+            z_0 = z_1_layers[-1]
 
-            self.phased_cell.set_state(c_s, h_s)
-            c0, h0 = c_s, h_s
+        z_1 = torch.stack(z_1_layers, dim=1)
+        z_1 = torch.mean(z_1, dim=1)
+        # z_1 = self.lstm.forward(z_0) # B, Seq, Hidden_size
 
-            outputs.append(out)
-        outputs = torch.cat(outputs, dim=1)
-
-        return outputs
+        logits = self.fc.forward(z_1)
+        return logits

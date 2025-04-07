@@ -18,4 +18,6 @@ def main_rnn(seed):
     return rmse_test_scaled
 
 rmse = main_rnn(42)
+
+print("/n")
 print(rmse)

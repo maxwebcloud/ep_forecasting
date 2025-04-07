@@ -225,7 +225,7 @@ def final_model_training(X_train, best_hp, Model, modelName,train_dataset, val_d
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
-    num_epochs = 5
+    num_epochs = 15
     train_loss_history = []
     val_loss_history = []
     patience = 10

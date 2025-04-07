@@ -9,7 +9,7 @@ def main_rnn(seed):
     set_num_cpu_threads()
 
     train_dataset, val_dataset, test_dataset= get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test)
-    study, best_hp = hyperparameter_tuning_rnn(X_train, SimpleRNN, train_dataset, val_dataset, test_dataset, seed)
+    study, best_hp = hyperparameter_tuning(X_train, SimpleRNN, train_dataset, val_dataset, test_dataset,suggest_rnn_hyperparameters, seed)
     final_model, _, _ = final_model_training(X_train, best_hp, SimpleRNN, "rnn", train_dataset, val_dataset, test_dataset, seed)
     train_predictions, val_predictions, test_predictions, train_predictions_actual, val_predictions_actual, test_predictions_actual =get_predictions(final_model, train_dataset, val_dataset, test_dataset, seed)
     y_train_actual, y_val_actual, y_test_actual = get_unscaled_targets(y_train, y_val, y_test)

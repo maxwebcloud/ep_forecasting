@@ -114,13 +114,13 @@ def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
     return train_dataset, val_dataset, test_dataset
 
 
-def get_dataloaders(seed, train_dataset, val_dataset, test_dataset):
+def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True):
 
     g = torch.Generator()
     g.manual_seed(seed)
 
     #DataLoader
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, drop_last=False, num_workers=0, generator= g)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=shuffle_train, drop_last=False, num_workers=0, generator= g)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, drop_last=False, num_workers=0, generator = g)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, drop_last=False, num_workers=0, generator=g)
     
@@ -140,7 +140,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
-        num_epochs = 3
+        num_epochs = 15
         patience = 7
         best_val_loss = float('inf')
         early_stopping_counter = 0
@@ -192,7 +192,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler= sampler)
-    study.optimize(objective, n_trials=3, n_jobs=1)
+    study.optimize(objective, n_trials=10, n_jobs=1)
 
     # Show Best Result
     print("Best trial parameters:")
@@ -225,7 +225,7 @@ def final_model_training(X_train, best_hp, Model, modelName,train_dataset, val_d
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
-    num_epochs = 15
+    num_epochs = 50
     train_loss_history = []
     val_loss_history = []
     patience = 10
@@ -281,7 +281,13 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
     plt.ylabel("Loss")
     plt.legend()
     plt.title(f"Trainings- and Validation Loss from {modelName.upper()} (seed {SEED})")
-    plt.show()
+    
+    filename = f"{modelName}_train_history_{SEED}.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
 
 
 # load trained model  
@@ -305,7 +311,7 @@ def get_predictions_in_batches(final_model, dataloader):
 
 def get_predictions(final_model,train_dataset, val_dataset, test_dataset, SEED):
     set_seed(SEED)
-    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
+    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train= False)
 
     train_predictions = get_predictions_in_batches(final_model, train_loader)
     validation_predictions = get_predictions_in_batches(final_model, val_loader)
@@ -376,7 +382,13 @@ def plot_forecast(seq_length, df_final_viz, train_predictions_actual, val_predic
     plt.xlabel('Date')
     plt.ylabel('Price')
     plt.legend()
-    plt.show()
+    
+    filename = f"{modelName}_forecast_{SEED}.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
 
 
 def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelName, SEED):
@@ -395,7 +407,14 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+
+    filename = f"{modelName}_residuals_{SEED}.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+    
 
 
 def print_num_parameters(final_model, modelName):

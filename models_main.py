@@ -57,5 +57,3 @@ def generate_evaluate_all_models(seeds):
     return results
 
 
-
-generate_evaluate_all_models([42])

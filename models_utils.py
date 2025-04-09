@@ -39,6 +39,7 @@ from workflowfunctions_utils import *
 # RNN Model ----------------------------------------------------------------------------------------------------------------------------------------------------
 
 class SimpleRNN(nn.Module):
+    name = "rnn"
     def __init__(self, input_size, hp):
         super(SimpleRNN, self).__init__()
         self.rnn = nn.RNN(input_size, hp['rnn_units'], batch_first=True)
@@ -69,6 +70,7 @@ def suggest_rnn_hyperparameters(trial):
 # LSTM Model ---------------------------------------------------------------------------------------------------------------------------------------------------
 
 class LSTMModel(nn.Module):
+    name = "lstm"
     def __init__(self, input_size, hp):
         super(LSTMModel, self).__init__()
         self.lstm1 = nn.LSTM(input_size, hp['lstm_units'], batch_first=True)
@@ -98,6 +100,7 @@ def suggest_lstm_hyperparameters(trial):
 # SLSTM Model ---------------------------------------------------------------------------------------------------------------------------------------------
 
 class StackedLSTMModel(nn.Module):
+    name = "slstm"
     def __init__(self, input_size, hp):
         super(StackedLSTMModel, self).__init__()
         self.lstm1 = nn.LSTM(input_size, hp['lstm_units_1'], batch_first=True)
@@ -134,6 +137,7 @@ def suggest_slstm_hyperparameters(trial):
 #PLSTM Model -----------------------------------------------------------------------------------------------------------------------------------------------
 
 class PhasedLSTMModel(nn.Module):
+    name = "plstm"
     def __init__(self, input_size, hp):
         super(PhasedLSTMModel, self).__init__()
         self.plstm = PLSTM(input_sz=input_size, hidden_sz=hp['lstm_units'])

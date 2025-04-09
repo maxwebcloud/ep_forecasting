@@ -38,7 +38,8 @@ def generate_evaluate_models(models,seeds):
 
             # final model training
             console.print("\n[bold turquoise2]Final Training[/bold turquoise2]")
-            final_model, train_loss_history, val_loss_history = final_model_training(X_train, best_hp, model, train_dataset, val_dataset, test_dataset, seed)
+            train_loss_history, val_loss_history = final_model_training(X_train, best_hp, model, train_dataset, val_dataset, test_dataset, seed)
+            final_model = load_model(model, best_hp, X_train, seed)
             train_history_plot(train_loss_history, val_loss_history, model.name, seed)
 
             # final model evaluation

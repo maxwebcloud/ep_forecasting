@@ -140,7 +140,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
-        num_epochs = 15
+        num_epochs = 3
         patience = 7
         best_val_loss = float('inf')
         early_stopping_counter = 0
@@ -192,7 +192,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler= sampler)
-    study.optimize(objective, n_trials=10, n_jobs=1)
+    study.optimize(objective, n_trials=3, n_jobs=1)
 
     # Show Best Result
     print("Best trial parameters:")
@@ -217,7 +217,7 @@ def load_best_hp(modelName, SEED):
 
 
 # Bestes Modell mit den gefundenen Hyperparametern trainieren
-def final_model_training(X_train, best_hp, Model, modelName,train_dataset, val_dataset, test_dataset, SEED):
+def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, test_dataset, SEED):
     set_seed(SEED)
     train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
@@ -225,7 +225,7 @@ def final_model_training(X_train, best_hp, Model, modelName,train_dataset, val_d
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
-    num_epochs = 50
+    num_epochs = 5
     train_loss_history = []
     val_loss_history = []
     patience = 10
@@ -262,7 +262,7 @@ def final_model_training(X_train, best_hp, Model, modelName,train_dataset, val_d
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stopping_counter = 0  # Reset Counter
-            torch.save(final_model.state_dict(), f"saved_models/{modelName}_model_final_{SEED}.pth") #save best weights
+            torch.save(final_model.state_dict(), f"saved_models/{Model.name}_model_final_{SEED}.pth") #save best weights
 
         else:
             early_stopping_counter += 1
@@ -280,7 +280,7 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
     plt.xlabel("Epochen")
     plt.ylabel("Loss")
     plt.legend()
-    plt.title(f"Trainings- and Validation Loss from {modelName.upper()} (seed {SEED})")
+    plt.title(f"Trainings- and Validation Loss {modelName.upper()} ({SEED})")
     
     filename = f"{modelName}_train_history_{SEED}.png"
     filepath = os.path.join("plots", filename)
@@ -291,9 +291,9 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
 
 
 # load trained model  
-def load_model(Model, hp, X_train, modelName, SEED):
+def load_model(Model, hp, X_train, SEED):
     model_final = Model(input_size=X_train.shape[2], hp=hp)
-    model_final.load_state_dict(torch.load(f"saved_models/{modelName}_model_final_{SEED}.pth"))
+    model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth"))
     model_final.eval()
     return model_final
 
@@ -378,7 +378,7 @@ def plot_forecast(seq_length, df_final_viz, train_predictions_actual, val_predic
     test_end = test_start + len(test_predictions_actual)
     plt.plot(df_final_viz.index[test_start:test_end], test_predictions_actual, label='Test Predictions', color='orange', alpha=0.8)
 
-    plt.title(f'Electricity Price Time Series Forecasting ({modelName.upper()}, {SEED})')
+    plt.title(f'Electricity Price Time Series Forecasting {modelName.upper()} ({SEED})')
     plt.xlabel('Date')
     plt.ylabel('Price')
     plt.legend()
@@ -401,7 +401,7 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     plt.plot(index_range, residuals, label='Residuals')
     plt.axhline(0, color='black', linestyle='--', linewidth=1)
 
-    plt.title(f"Prediction Residuals ({modelName.upper()}, {SEED})")
+    plt.title(f"Prediction Residuals {modelName.upper()} ({SEED})")
     plt.xlabel('Time')
     plt.ylabel('Prediction Error')
     plt.legend()

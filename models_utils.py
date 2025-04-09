@@ -43,6 +43,7 @@ class SimpleRNN(nn.Module):
     def __init__(self, input_size, hp):
         super(SimpleRNN, self).__init__()
         self.rnn = nn.RNN(input_size, hp['rnn_units'], batch_first=True)
+        self.layer_norm = nn.LayerNorm(hp['rnn_units'])
         self.dropout1 = nn.Dropout(hp['dropout_rate_rnn'])
         self.fc1 = nn.Linear(hp['rnn_units'], hp['dense_units'])
         self.dropout2 = nn.Dropout(hp['dropout_rate_dense'])
@@ -51,6 +52,7 @@ class SimpleRNN(nn.Module):
     def forward(self, x):
         out, _ = self.rnn(x)
         out = out[:, -1, :]  # Nur der letzte Zeitschritt
+        out = self.layer_norm(out)
         out = self.dropout1(out)
         out = self.fc1(out)
         out = self.dropout2(out)
@@ -74,6 +76,7 @@ class LSTMModel(nn.Module):
     def __init__(self, input_size, hp):
         super(LSTMModel, self).__init__()
         self.lstm1 = nn.LSTM(input_size, hp['lstm_units'], batch_first=True)
+        self.layer_norm = nn.LayerNorm(hp['lstm_units'])
         self.dropout1 = nn.Dropout(hp['dropout_rate_lstm'])
         self.fc1 = nn.Linear(hp['lstm_units'], hp['dense_units'])
         self.dropout3 = nn.Dropout(hp['dropout_rate_dense'])
@@ -81,6 +84,7 @@ class LSTMModel(nn.Module):
 
     def forward(self, x):
         out, _ = self.lstm1(x)
+        out = self.layer_norm(out)
         out = self.dropout1(out)
         out = out[:, -1, :]
         out = self.fc1(out)
@@ -104,8 +108,10 @@ class StackedLSTMModel(nn.Module):
     def __init__(self, input_size, hp):
         super(StackedLSTMModel, self).__init__()
         self.lstm1 = nn.LSTM(input_size, hp['lstm_units_1'], batch_first=True)
+        self.norm1 = nn.LayerNorm(hp['lstm_units_1'])
         self.dropout1 = nn.Dropout(hp['dropout_rate_lstm_1'])
         self.lstm2 = nn.LSTM(hp['lstm_units_1'], hp['lstm_units_2'], batch_first=True)
+        self.norm2 = nn.LayerNorm(hp['lstm_units_2'])
         self.dropout2 = nn.Dropout(hp['dropout_rate_lstm_2'])
         self.fc1 = nn.Linear(hp['lstm_units_2'], hp['dense_units'])
         self.dropout3 = nn.Dropout(hp['dropout_rate_dense'])
@@ -113,8 +119,10 @@ class StackedLSTMModel(nn.Module):
 
     def forward(self, x):
         out, _ = self.lstm1(x)
+        out = self.norm1(out)
         out = self.dropout1(out)
         out, _ = self.lstm2(out)
+        out = self.norm2(out)
         out = self.dropout2(out)
         out = out[:, -1, :]
         out = self.fc1(out)
@@ -141,13 +149,15 @@ class PhasedLSTMModel(nn.Module):
     def __init__(self, input_size, hp):
         super(PhasedLSTMModel, self).__init__()
         self.plstm = PLSTM(input_sz=input_size, hidden_sz=hp['lstm_units'])
+        self.norm = nn.LayerNorm(hp['lstm_units'])
         self.dropout1 = nn.Dropout(hp['dropout_rate_lstm'])
         self.fc1 = nn.Linear(hp['lstm_units'], hp['dense_units'])
         self.dropout2 = nn.Dropout(hp['dropout_rate_dense'])
         self.fc2 = nn.Linear(hp['dense_units'], 1)
 
     def forward(self, x):
-        out= self.plstm(x)  # ← Output korrekt extrahiert
+        out= self.plstm(x)
+        out = self.norm(out)
         out = self.dropout1(out)
         out = out[:, -1, :]
         out = self.fc1(out)

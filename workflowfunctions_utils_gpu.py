@@ -289,7 +289,7 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
                 print(f"Early stopping nach {epoch+1} Epochen.")
                 break
     
-    return final_model, train_loss_history, val_loss_history 
+    return train_loss_history, val_loss_history 
 
 
 def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):

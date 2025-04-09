@@ -1,5 +1,5 @@
 from models_utils import *
-from workflowfunctions_utils import *
+from workflowfunctions_utils_gpu import *
 from rich import print
 from rich.console import Console
 

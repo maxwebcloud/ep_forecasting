@@ -122,12 +122,12 @@ def set_num_cpu_threads():
 
 
 def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
-    X_train_tensor = torch.tensor(X_train, dtype=torch.float32).to(device)
-    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
-    X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
-    y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1).to(device)
-    X_test_tensor = torch.tensor(X_test, dtype=torch.float32).to(device)
-    y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1).to(device)
+    X_train_tensor = torch.tensor(X_train, dtype=torch.float32)  
+    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
+    X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+    y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1)
+    X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+    y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
     train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
     val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
     test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
@@ -155,11 +155,11 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
         hp = hp_function(trial)
         
         rnn_model = Model(input_size=X_train.shape[2], hp=hp).to(device)
-        criterion = nn.MSELoss()
+        criterion = nn.MSELoss().to(device)
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
-        num_epochs = 5
-        patience = 3
+        num_epochs = 15
+        patience = 7
         best_val_loss = float('inf')
         early_stopping_counter = 0
 
@@ -210,7 +210,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler= sampler)
-    study.optimize(objective, n_trials=3, n_jobs=1)
+    study.optimize(objective, n_trials=10, n_jobs=1)
 
     # Show Best Result
     print("Best trial parameters:")
@@ -243,10 +243,10 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
-    num_epochs = 5
+    num_epochs = 50
     train_loss_history = []
     val_loss_history = []
-    patience = 3
+    patience = 10
     best_val_loss = float('inf')
     early_stopping_counter = 0
 
@@ -254,6 +254,7 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
         final_model.train()
         train_loss = 0.0
         for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
             y_pred = final_model(X_batch)
             loss = criterion(y_pred, y_batch)
@@ -268,7 +269,8 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
         val_loss = 0.0
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
-                y_pred = final_model(X_batch)
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)               
+                y_pred = final_model(X_batch).to(device)
                 loss = criterion(y_pred, y_batch)
                 val_loss += loss.item()
         val_loss /= len(val_loader)
@@ -324,6 +326,7 @@ def get_predictions_in_batches(final_model, dataloader):
     preds = []
     with torch.no_grad():
         for X_batch, y_batch in dataloader:
+            X_batch = X_batch.to(device)
             preds.append(final_model(X_batch).cpu().numpy())  # Von MPS auf CPU
     return np.vstack(preds)
 

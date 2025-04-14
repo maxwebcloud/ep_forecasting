@@ -11,6 +11,7 @@ import pandas as pd
 
 # Visualization Libraries
 import matplotlib.pyplot as plt
+import scipy.stats as stats
 
 # Machine Learning & Statistics
 from sklearn.metrics import mean_squared_error
@@ -436,6 +437,39 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     # Speichern & schließen
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+
+def plot_residuals_hist(modelName, y_true, y_pred, SEED, bins = 20):
+    residuals = y_true - y_pred
+    plt.figure(figsize=(8, 5))
+    plt.hist(residuals, bins=bins, edgecolor='black', alpha=0.7)
+    plt.axvline(0, color='red', linestyle='dashed', linewidth=1)
+    plt.title(f"Histogramm of the Residuals {modelName.upper()} ({SEED})")
+    plt.xlabel("Residual")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    plt.tight_layout()
+
+    filename = f"{modelName}_residualsHist_{SEED}.png"
+    filepath = os.path.join("plots", filename)
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+    
+def plot_qq(modelName, y_true, y_pred, SEED):
+    residuals = y_true - y_pred
+    plt.figure(figsize=(6, 6))
+    stats.probplot(residuals, dist="norm", plot=plt)
+    plt.title(f"QQ-Plot of the Residuals {modelName.upper()} ({SEED})")
+    plt.grid(True)
+    plt.tight_layout()
+
+    filename = f"{modelName}_residualsQQ_{SEED}.png"
+    filepath = os.path.join("plots", filename)
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+    
+    
     
 
 

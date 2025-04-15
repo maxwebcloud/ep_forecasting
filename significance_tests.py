@@ -14,7 +14,7 @@ rmsesLSTM=[0.0204, 0.0214, 0.0204, 0.223, 0.0222, 0.0213]
 rmsesSTLST=[0.0219, 0.0220, 0.0237, 0.0226, 0.0212, 0.0223]
 rmsesPLSTM=[0.0204, 0.0200, 0.0215, 0.0202, 0.0207, 0.0205]
 
-pValueFried = friedmann_test(rmsesRNN, rmsesLSTM, rmsesLSTM, rmsesPLSTM)
+pValueFried = friedmann_test(rmsesRNN, rmsesLSTM, rmsesSTLST, rmsesPLSTM)
 print(f"Friedmann-Test: {pValueFried} (p-Value)")
 
 pValueWil = wilcoxon_test(rmsesLSTM, rmsesPLSTM)

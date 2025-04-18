@@ -23,12 +23,13 @@ if USE_CLI:
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mode",
-        choices=["standard", "3models", "phased"],
-        default="standard",
-        help="standard = all four models; "
-             "3models = SimpleRNN, LSTM, StackedLSTM; "
-             "phased = PhasedLSTM only",
+    "--mode",
+    choices=["standard", "3models", "phased", "rnn", "lstm", "slstm", "plstm"],
+    default="standard",
+    help="standard = all four models; "
+         "3models = rnn, lstm, slstm; "
+         "phased = plstm only; "
+         "rnn, lstm, slstm, plstm = run individual model only",
     )
     parser.add_argument(
         "--device",
@@ -48,17 +49,28 @@ SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-N_SEEDS = 5
-seeds_list = random.sample(range(0, 100), N_SEEDS)
-# seeds_list = [81]  # uncomment for a fixed single seed
+#N_SEEDS = 5
+#seeds_list = random.sample(range(0, 100), N_SEEDS)
+seeds_list = [81]  # uncomment for a fixed single seed
 
 #Model selection
-if mode == "standard":          # all four models
+#Model selection
+if mode == "standard":          
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel, PhasedLSTMModel]
-elif mode == "3models":         # three recurrent models without Phased
+elif mode == "3models":         
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel]
-else:                           # mode == "phased"
+elif mode == "phased":
     selected_classes = [PhasedLSTMModel]
+elif mode == "rnn":
+    selected_classes = [SimpleRNN]
+elif mode == "lstm":
+    selected_classes = [LSTMModel]
+elif mode == "slstm":
+    selected_classes = [StackedLSTMModel]
+elif mode == "plstm":
+    selected_classes = [PhasedLSTMModel]
+else:
+    raise ValueError(f"Unknown mode: {mode}")
 
 # build (class, use_gpu) tuples in one line with list comprehension 
 model_configs = [(cls, use_gpu_flag) for cls in selected_classes]
@@ -78,6 +90,7 @@ print("\n=== RMSE Summary ===")
 for model_name, rmse_list in results.items():
     mean_rmse = np.mean(rmse_list)
     print(f"\nModel: {model_name}")
+    print(f"  Device: {devices[model_name]}")
     for seed, rmse in zip(seeds_list, rmse_list):
         print(f"  Seed {seed}: RMSE = {rmse:.4f}")
     print(f"  Average RMSE: {mean_rmse:.4f}")

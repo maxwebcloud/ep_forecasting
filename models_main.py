@@ -19,6 +19,8 @@ def generate_evaluate_models(model_configs, seeds):
 
     results = {}
     runtimes = {}
+    devices = {} 
+
 
     X_train, y_train, X_val, y_val, X_test, y_test, df_final_viz = import_data()
     set_num_cpu_threads()
@@ -32,6 +34,7 @@ def generate_evaluate_models(model_configs, seeds):
         model_name = model_class.name
         device = get_device(use_gpu)
         results[model_name] = []
+        devices[model_name] = str(device) 
 
         console.rule(f"[bold magenta]Starte Modellworkflow für {model_name.upper()} auf {device}[/bold magenta]")
         model_runtime_start = time.time()
@@ -69,4 +72,4 @@ def generate_evaluate_models(model_configs, seeds):
         model_runtime_end = time.time()
         runtimes[model_name] = (model_runtime_end - model_runtime_start) / 60  # in Minuten
 
-    return results, runtimes
+    return results, runtimes,  devices 

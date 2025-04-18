@@ -54,8 +54,7 @@ np.random.seed(SEED)
 seeds_list = [81]  # uncomment for a fixed single seed
 
 #Model selection
-#Model selection
-if mode == "standard":          
+if mode == "all_modells":          
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel, PhasedLSTMModel]
 elif mode == "3models":         
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel]

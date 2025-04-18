@@ -59,8 +59,6 @@ if mode == "standard":
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel, PhasedLSTMModel]
 elif mode == "3models":         
     selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel]
-elif mode == "phased":
-    selected_classes = [PhasedLSTMModel]
 elif mode == "rnn":
     selected_classes = [SimpleRNN]
 elif mode == "lstm":

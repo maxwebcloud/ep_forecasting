@@ -72,9 +72,9 @@ SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-#N_SEEDS = 5
-#seeds_list = random.sample(range(0, 100), N_SEEDS)
-seeds_list = [81]  # uncomment for a fixed single seed
+N_SEEDS = 5
+seeds_list = random.sample(range(0, 100), N_SEEDS)
+#seeds_list = [81]  # uncomment for a fixed single seed
 
 #Model selection
 if mode == "all_modells":          

@@ -1,10 +1,33 @@
 """
 run_all_models.py
 
-Automatically runs all model classes defined in models_utils.py.
-Generates seeds, evaluates models, and reports RMSE values.
+This script automatically runs selected model classes defined in models_utils.py.
+It generates random seeds, trains each model using optimized hyperparameters,
+evaluates performance, and prints a detailed RMSE summary.
 
-Toggle CLI on/off with USE_CLI.
+You can control the execution via command-line arguments (CLI):
+
+Available CLI options:
+----------------------
+--mode      (str) : Select which model(s) to run. Choices:
+    - "standard"   → Runs all four models (rnn, lstm, slstm, plstm)
+    - "3models"    → Runs rnn, lstm, and slstm (excludes plstm)
+    - "rnn"        → Runs only the SimpleRNN model
+    - "lstm"       → Runs only the LSTM model
+    - "slstm"      → Runs only the StackedLSTM model
+    - "plstm"      → Runs only the PhasedLSTM model
+
+--device    (str) : Choose the device for training. Choices:
+    - "cpu"        → Force model(s) to run on CPU
+    - "gpu"        → Use Apple MPS backend if available (for M1/M2/M3 GPUs)
+
+Examples:
+---------
+Run all models on CPU:
+    python run_all_models.py --mode standard --device cpu
+
+Run only the LSTM model on GPU:
+    python run_all_models.py --mode lstm --device gpu
 """
 
 import numpy as np
@@ -79,7 +102,7 @@ for model_class, use_gpu in model_configs:
 
 # Training & evaluation
 start_time = time.time()
-results, runtimes = generate_evaluate_models(model_configs, seeds_list)
+results, runtimes, devices = generate_evaluate_models(model_configs, seeds_list)
 
 
 # Output summary
@@ -96,3 +119,5 @@ for model_name, rmse_list in results.items():
 total_runtime = sum(runtimes.values())
 overall_runtime = (time.time() - start_time) / 60
 print(f"\nTotal runtime across all models: {total_runtime:.2f} minutes")
+
+

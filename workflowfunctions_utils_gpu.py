@@ -36,20 +36,6 @@ from optuna.pruners import HyperbandPruner
 import time 
 
 
-"""
-
-#GPU toggle switch 
-USE_GPU = False           
-
-if USE_GPU and torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
-
-print("Using device:", device)
-
-"""
-
 
 def get_device(use_gpu=True):
     """
@@ -63,16 +49,23 @@ def get_device(use_gpu=True):
 
 
 def set_seed(SEED, device=None):
+    import torch
+    import numpy as np
+    import random
+    import os
+
     torch.manual_seed(SEED)
     np.random.seed(SEED)
     random.seed(SEED)
     os.environ["PYTHONHASHSEED"] = str(SEED)
 
     if device is not None and device.type == "mps":
-        torch.mps.manual_seed(SEED)
+        try:
+            torch.mps.manual_seed(SEED)
+        except AttributeError:
+            pass  # Falls nicht verfügbar, kein Problem
 
     torch.use_deterministic_algorithms(True)
-
 
 # Data Import
 def import_data():

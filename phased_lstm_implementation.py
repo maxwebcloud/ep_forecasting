@@ -1,4 +1,5 @@
 
+
 import torch
 from torch import nn
 import math
@@ -202,3 +203,9 @@ class Model(torch.nn.Module):
 
         logits = self.fc.forward(z_1)
         return logits
+
+
+
+
+
+

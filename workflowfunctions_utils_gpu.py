@@ -11,7 +11,6 @@ import pandas as pd
 
 # Visualization Libraries
 import matplotlib.pyplot as plt
-import scipy.stats as stats
 
 # Machine Learning & Statistics
 from sklearn.metrics import mean_squared_error
@@ -36,8 +35,11 @@ from optuna.pruners import HyperbandPruner
 
 import time 
 
+
+"""
+
 #GPU toggle switch 
-USE_GPU = True      
+USE_GPU = False           
 
 if USE_GPU and torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -46,18 +48,30 @@ else:
 
 print("Using device:", device)
 
+"""
 
 
+def get_device(use_gpu=True):
+    """
+    Returns the appropriate torch.device based on use_gpu flag.
+    Supports Apple M1/M2 (MPS) or falls back to CPU.
+    """
+    if use_gpu and torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")
 
-def set_seed(SEED):
+
+def set_seed(SEED, device=None):
     torch.manual_seed(SEED)
-    if device.type == "mps":
-        torch.mps.manual_seed(SEED)  
     np.random.seed(SEED)
     random.seed(SEED)
-    torch.use_deterministic_algorithms(True)
     os.environ["PYTHONHASHSEED"] = str(SEED)
 
+    if device is not None and device.type == "mps":
+        torch.mps.manual_seed(SEED)
+
+    torch.use_deterministic_algorithms(True)
 
 
 # Data Import
@@ -111,6 +125,52 @@ with open("data/y_test_long.pkl", "rb") as f:
 with open("data/df_final_viz.pkl", "rb") as f:
     df_final_viz = pickle.load(f)
 
+
+"""
+
+""" 
+
+# Data Import (red1 versions)
+import pickle
+
+with open("data/X_train_red1.pkl", "rb") as f:
+    X_train = pickle.load(f)
+with open("data/y_train_red1.pkl", "rb") as f:
+    y_train = pickle.load(f)
+with open("data/X_val_red1.pkl", "rb") as f:
+    X_val = pickle.load(f)
+with open("data/y_val_red1.pkl", "rb") as f:
+    y_val = pickle.load(f)
+with open("data/X_test_red1.pkl", "rb") as f:
+    X_test = pickle.load(f)
+with open("data/y_test_red1.pkl", "rb") as f:
+    y_test = pickle.load(f)
+with open("data/df_final_viz.pkl", "rb") as f:
+    df_final_viz = pickle.load(f)
+
+
+"""
+
+"""
+# Data Import (red2 versions)
+import pickle
+
+with open("data/X_train_red2.pkl", "rb") as f:
+    X_train = pickle.load(f)
+with open("data/y_train_red2.pkl", "rb") as f:
+    y_train = pickle.load(f)
+with open("data/X_val_red2.pkl", "rb") as f:
+    X_val = pickle.load(f)
+with open("data/y_val_red2.pkl", "rb") as f:
+    y_val = pickle.load(f)
+with open("data/X_test_red2.pkl", "rb") as f:
+    X_test = pickle.load(f)
+with open("data/y_test_red2.pkl", "rb") as f:
+    y_test = pickle.load(f)
+with open("data/df_final_viz.pkl", "rb") as f:
+    df_final_viz = pickle.load(f)
+
+
 """
 
 
@@ -119,6 +179,7 @@ def set_num_cpu_threads():
     num_threads = max(1, os.cpu_count() // 2)
     torch.set_num_threads(num_threads)
     print(f"PyTorch uses: {torch.get_num_threads()} Threads")
+
 
 
 
@@ -135,6 +196,10 @@ def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
     return train_dataset, val_dataset, test_dataset
 
 
+
+
+
+
 def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True):
     g = torch.Generator()
     g.manual_seed(seed)
@@ -146,11 +211,10 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_trai
 
 
 # Objective-function with Hyperband-Pruning 
-def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset,hp_function,SEED):
+def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset, hp_function, SEED, device):
     
     def objective(trial):
-
-        set_seed(SEED)
+        set_seed(SEED, device)  # device übergeben
         train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
         hp = hp_function(trial)
@@ -210,6 +274,19 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     # Study with HyperbandPruner
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
+    study = optuna.create_study(direction='minimize', pruner=pruner, sampler=sampler)
+    study.optimize(objective, n_trials=10, n_jobs=1)
+
+    # Show Best Result
+    print("Best trial parameters:")
+    for key, value in study.best_trial.params.items():
+        print(f"{key}: {value}")
+    
+    best_hp = study.best_trial.params
+    return study, best_hp
+    # Study with HyperbandPruner
+    sampler = optuna.samplers.TPESampler(seed=SEED) 
+    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler= sampler)
     study.optimize(objective, n_trials=10, n_jobs=1)
 
@@ -236,8 +313,8 @@ def load_best_hp(modelName, SEED):
 
 
 # Bestes Modell mit den gefundenen Hyperparametern trainieren
-def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, test_dataset, SEED):
-    set_seed(SEED)
+def final_model_training(X_train, best_hp, Model, train_dataset, val_dataset, test_dataset, SEED, device):
+    set_seed(SEED, device)
     train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
     final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
@@ -313,7 +390,7 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
 
 
 # load trained model  
-def load_model(Model, hp, X_train, SEED):
+def load_model(Model, hp, X_train, SEED, device):
     model_final = Model(input_size=X_train.shape[2], hp=hp).to(device)
     model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth", map_location=device))
     model_final.eval()
@@ -322,23 +399,23 @@ def load_model(Model, hp, X_train, SEED):
 
 
 # Make predictions
-def get_predictions_in_batches(final_model, dataloader):
+def get_predictions_in_batches(final_model, dataloader, device):
     final_model.eval()
     preds = []
     with torch.no_grad():
-        for X_batch, y_batch in dataloader:
+        for X_batch, _ in dataloader:
             X_batch = X_batch.to(device)
-            preds.append(final_model(X_batch).cpu().numpy())  # Von MPS auf CPU
+            preds.append(final_model(X_batch).cpu().numpy())  # Immer .cpu() für späteres numpy
     return np.vstack(preds)
 
 
-def get_predictions(final_model,train_dataset, val_dataset, test_dataset, SEED):
-    set_seed(SEED)
-    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train= False)
+def get_predictions(final_model, train_dataset, val_dataset, test_dataset, SEED, device):
+    set_seed(SEED, device)
+    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train=False)
 
-    train_predictions = get_predictions_in_batches(final_model, train_loader)
-    validation_predictions = get_predictions_in_batches(final_model, val_loader)
-    test_predictions = get_predictions_in_batches(final_model, test_loader)
+    train_predictions = get_predictions_in_batches(final_model, train_loader, device)
+    validation_predictions = get_predictions_in_batches(final_model, val_loader, device)
+    test_predictions = get_predictions_in_batches(final_model, test_loader, device)
 
     # Inverse transform scaled predictions and scaled target
     train_predictions_actual = scaler_y.inverse_transform(train_predictions)
@@ -346,7 +423,6 @@ def get_predictions(final_model,train_dataset, val_dataset, test_dataset, SEED):
     test_predictions_actual = scaler_y.inverse_transform(test_predictions)
 
     return train_predictions, validation_predictions, test_predictions, train_predictions_actual, validation_predictions_actual, test_predictions_actual
-
 
 def get_unscaled_targets(y_train, y_val, y_test):
     y_train_actual = scaler_y.inverse_transform(y_train.reshape(-1, 1))
@@ -437,39 +513,6 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     # Speichern & schließen
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
-
-def plot_residuals_hist(modelName, y_true, y_pred, SEED, bins = 20):
-    residuals = y_true - y_pred
-    plt.figure(figsize=(8, 5))
-    plt.hist(residuals, bins=bins, edgecolor='black', alpha=0.7)
-    plt.axvline(0, color='red', linestyle='dashed', linewidth=1)
-    plt.title(f"Histogramm of the Residuals {modelName.upper()} ({SEED})")
-    plt.xlabel("Residual")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-    plt.tight_layout()
-
-    filename = f"{modelName}_residualsHist_{SEED}.png"
-    filepath = os.path.join("plots", filename)
-    # Speichern & schließen
-    plt.savefig(filepath, bbox_inches='tight')
-    plt.close()
-    
-def plot_qq(modelName, y_true, y_pred, SEED):
-    residuals = y_true - y_pred
-    plt.figure(figsize=(6, 6))
-    stats.probplot(residuals, dist="norm", plot=plt)
-    plt.title(f"QQ-Plot of the Residuals {modelName.upper()} ({SEED})")
-    plt.grid(True)
-    plt.tight_layout()
-
-    filename = f"{modelName}_residualsQQ_{SEED}.png"
-    filepath = os.path.join("plots", filename)
-    # Speichern & schließen
-    plt.savefig(filepath, bbox_inches='tight')
-    plt.close()
-    
-    
     
 
 

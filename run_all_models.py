@@ -3,47 +3,77 @@ run_all_models.py
 
 Automatically runs all model classes defined in models_utils.py.
 Generates seeds, evaluates models, and reports RMSE values.
+
+Toggle CLI on/off with USE_CLI.
 """
 
 import numpy as np
 import random
-import inspect
 import time
-#from models_utils import * #nur wenn manuelle seed lsite 
-import models_utils
+from models_utils import *          # brings SimpleRNN, LSTMModel, StackedLSTMModel, PhasedLSTMModel
 from models_main import generate_evaluate_models
 
-start_time = time.time() 
-# Central seed for reproducibility
+
+
+#Toggle: use CLI or not --> needed for simukltaneous runs on CPU und GPU 
+USE_CLI = True      # ← set to False to ignore command‑line arguments
+
+if USE_CLI:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["standard", "3models", "phased"],
+        default="standard",
+        help="standard = all four models; "
+             "3models = SimpleRNN, LSTM, StackedLSTM; "
+             "phased = PhasedLSTM only",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["cpu", "gpu"],
+        default="cpu",
+        help="Run models on CPU or GPU (boolean flag per model_configs entry)",
+    )
+    args = parser.parse_args()
+    mode = args.mode
+    use_gpu_flag = args.device == "gpu"
+else:
+    mode = "standard"       # fallback when CLI is disabled
+    use_gpu_flag = True    # run on CPU by default
+
+# Seed of this .py file 
 SEED = 42
 random.seed(SEED)
+np.random.seed(SEED)
 
-# Generate a list of random seeds
-n = 5
-seeds_list = random.sample(range(0, 100), n)
-#seeds_list = [42]
+N_SEEDS = 5
+seeds_list = random.sample(range(0, 100), N_SEEDS)
+# seeds_list = [81]  # uncomment for a fixed single seed
 
-# Dynamically extract all relevant model classes from models_utils.py
-models = [
-    obj for name, obj in inspect.getmembers(models_utils, inspect.isclass)
-    if obj.__module__ == models_utils.__name__
-]
+#Model selection
+if mode == "standard":          # all four models
+    selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel, PhasedLSTMModel]
+elif mode == "3models":         # three recurrent models without Phased
+    selected_classes = [SimpleRNN, LSTMModel, StackedLSTMModel]
+else:                           # mode == "phased"
+    selected_classes = [PhasedLSTMModel]
 
-#
-# models = [LSTMModel]
+# build (class, use_gpu) tuples in one line with list comprehension 
+model_configs = [(cls, use_gpu_flag) for cls in selected_classes]
 
-
-print("Models list:", models)
-
-# Call the central evaluation function with dynamic model classes
-results = generate_evaluate_models(models, seeds_list)
-print(results)
-
-end_time = time.time()
-runtime = end_time - start_time
+print("Model configurations:")
+for model_class, use_gpu in model_configs:
+    print(f"  {model_class.__name__} (use_gpu={use_gpu})")
 
 
-# Display RMSE values and averages per model
+# Training & evaluation
+start_time = time.time()
+results, runtimes = generate_evaluate_models(model_configs, seeds_list)
+
+
+# Output summary
 print("\n=== RMSE Summary ===")
 for model_name, rmse_list in results.items():
     mean_rmse = np.mean(rmse_list)
@@ -51,6 +81,8 @@ for model_name, rmse_list in results.items():
     for seed, rmse in zip(seeds_list, rmse_list):
         print(f"  Seed {seed}: RMSE = {rmse:.4f}")
     print(f"  Average RMSE: {mean_rmse:.4f}")
+    print(f"  Runtime: {runtimes[model_name]:.2f} minutes")
 
-runtime_minutes = runtime / 60
-print(f"\nTotal Runtime: {runtime_minutes:.2f} minutes")
+total_runtime = sum(runtimes.values())
+overall_runtime = (time.time() - start_time) / 60
+print(f"\nTotal runtime across all models: {total_runtime:.2f} minutes")

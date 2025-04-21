@@ -10,7 +10,9 @@ from torch.utils.data import DataLoader, TensorDataset
 import json
 import optuna
 from optuna.pruners import HyperbandPruner
-from workflowfunctions_utils_gpu import set_seed, get_dataloaders, get_predictions_in_batches
+from rich import print
+from rich.console import Console
+from workflowfunctions_utils_gpu import set_seed, get_dataloaders, get_predictions_in_batches, get_device
 from models_utils import *
 
 
@@ -39,16 +41,23 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
                                sequence_length=24, step_size=1, n_folds = 5, sliding_window = True, variance_ratio=0.8, single_step= True):
     results = []
 
+    console = Console()
+
     suggest_functions = {
         "rnn": suggest_rnn_hyperparameters,
         "lstm": suggest_lstm_hyperparameters,
         "slstm": suggest_slstm_hyperparameters,
         "plstm": suggest_plstm_hyperparameters
         }
-
+    
+    device = get_device(use_gpu = False)
 
     for model in models:
+        console.rule(f"[bold magenta]Starte Cross Validation für {model.name.upper()} auf {device}[/bold magenta]")
         for seed in seeds:
+            fold_rmses = []
+
+            console.rule(f"\n[medium_purple]{model.name.upper()} mit Seed {seed}[/medium_purple]")
             set_seed(seed)
 
 
@@ -63,6 +72,7 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
 
             #Schleife über jeden Fold
             for fold_idx, fold in enumerate(folds):
+                console.print(f"\n[bold turquoise2]Fold [{fold_idx+1}/{n_folds}]: [/bold turquoise2]")
                 # Daten extrahieren
                 X_train, y_train = fold["train"]
                 X_val, y_val = fold["val"]
@@ -98,30 +108,32 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
 
 
                 # Tensodatasets
-                print(f"y Train: {y_train_seq.shape}")
-                print(f"X Train: {X_train_seq.shape}")
                 train_dataset, val_dataset, test_dataset = get_tensordatasets(X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq)
 
                 # Hyperparametertuning
+                console.print("\n[bold turquoise2]Hyperparametertuning: [/bold turquoise2]")
                 study, best_hp = hyperparameter_tuning(X_train_seq, model, train_dataset, val_dataset, test_dataset, suggest_functions[model.name], seed, torch.device("cpu"))
 
                 # Modell trainieren
+                console.print("\n[bold turquoise2]Final Training[/bold turquoise2]")
                 trained_model = final_model_training_flex(X_train_seq, best_hp, model, train_dataset, val_dataset, test_dataset, seed, device = torch.device("cpu"), return_final = True)
 
                 # Modell evaluieren
-                train_loader, test_loader, val_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset)
+                train_loader, test_loader, val_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train = False, batch_size = 64)
                 predictions = get_predictions_in_batches(trained_model, dataloader = test_loader, device = torch.device("cpu"))
                 y_test_inv = scaler_y.inverse_transform(y_test_seq.reshape(-1,1))
                 predictions_inv = scaler_y.inverse_transform(predictions)
 
                 rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
+                fold_rmses.append(rmse)
 
-                results.append({
-                    "model": model.name,
-                    "seed": seed,
-                    "fold": fold_idx,
-                    "rmse": rmse
-                })
+            avg_rmse = np.mean(fold_rmses)
+            results.append({
+                "model": model.name,
+                "seed": seed,
+                "fold": fold_rmses,
+                "rmse": avg_rmse
+            })
 
     return results
 
@@ -263,7 +275,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
 
     # Study with HyperbandPruner
     sampler = optuna.samplers.TPESampler(seed=SEED) 
-    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
+    pruner = optuna.pruners.HyperbandPruner(min_resource=4, max_resource=17, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler=sampler)
     study.optimize(objective, n_trials=10, n_jobs=1)
 
@@ -380,7 +392,7 @@ def load_best_hp(modelName, SEED):
 #return final model
 def final_model_training_flex(X_train, best_hp, Model, train_dataset, val_dataset, test_dataset, SEED, device, return_final = False):
     set_seed(SEED)
-    train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train= False, batch_size= 64)
+    train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, batch_size= 32)
 
     final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
     criterion = nn.MSELoss()
@@ -451,7 +463,7 @@ def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
     test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
     return train_dataset, val_dataset, test_dataset
     
-
+"""
 #testweise Ausführung 
 
 with open("data/df_final_eng.pkl", "rb") as f:
@@ -464,3 +476,4 @@ result = cross_validate_time_series([LSTMModel], [42], X, y, train_size=0.6, val
                                sequence_length=24, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True)
 
 print(result)
+"""

@@ -3,13 +3,15 @@ import numpy as np
 import pickle 
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import TimeSeriesSplit
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 import json
-
+import optuna
+from optuna.pruners import HyperbandPruner
 from workflowfunctions_utils_gpu import set_seed, get_dataloaders, get_predictions_in_batches
-from models_utils import LSTMModel
+from models_utils import *
 
 
 # zusätzliche Funktionen die im CV Ablauf benötigt werden -----------------------------------------------------
@@ -34,17 +36,30 @@ für jedes Modell
 """
 
 def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_size=0.2, test_size=0.2, 
-                               sequence_length=24, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
+                               sequence_length=24, step_size=1, n_folds = 5, sliding_window = True, variance_ratio=0.8, single_step= True):
     results = []
+
+    suggest_functions = {
+        "rnn": suggest_rnn_hyperparameters,
+        "lstm": suggest_lstm_hyperparameters,
+        "slstm": suggest_slstm_hyperparameters,
+        "plstm": suggest_plstm_hyperparameters
+        }
+
 
     for model in models:
         for seed in seeds:
             set_seed(seed)
 
-            # Sliding Window Folds erzeugen
-            folds = split_data_time_series_sliding_auto_folds(
-                data, target, n_folds=n_folds, slide_fraction= test_size, 
-                train_frac= train_size, val_frac= val_size, test_frac= test_size)
+
+            if sliding_window:
+                # Sliding Window Folds erzeugen
+                folds = split_data_time_series_sliding_auto_folds(
+                    data, target, n_folds=n_folds, slide_fraction= test_size, 
+                    train_frac= train_size, val_frac= val_size, test_frac= test_size)
+            else:
+                folds = split_data_time_series_expanding_window(data, target, n_splits = 5)
+            
 
             #Schleife über jeden Fold
             for fold_idx, fold in enumerate(folds):
@@ -79,15 +94,19 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
                 X_test_seq, y_test_seq = create_sequences(X_test, y_test, sequence_length, step_size, single_step)
 
                 # besten Hyperparameter für den Seed und das Modell laden
-                hp = load_best_hp(model.name, seed)
+                #hp = load_best_hp(model.name, seed)
+
 
                 # Tensodatasets
                 print(f"y Train: {y_train_seq.shape}")
                 print(f"X Train: {X_train_seq.shape}")
                 train_dataset, val_dataset, test_dataset = get_tensordatasets(X_train_seq, y_train_seq, X_val_seq, y_val_seq, X_test_seq, y_test_seq)
 
+                # Hyperparametertuning
+                study, best_hp = hyperparameter_tuning(X_train_seq, model, train_dataset, val_dataset, test_dataset, suggest_functions[model.name], seed, torch.device("cpu"))
+
                 # Modell trainieren
-                trained_model = final_model_training_flex(X_train_seq, hp, model, train_dataset, val_dataset, test_dataset, seed, device = torch.device("cpu"), return_final = True)
+                trained_model = final_model_training_flex(X_train_seq, best_hp, model, train_dataset, val_dataset, test_dataset, seed, device = torch.device("cpu"), return_final = True)
 
                 # Modell evaluieren
                 train_loader, test_loader, val_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset)
@@ -132,9 +151,7 @@ def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fra
     assert np.isclose(total_frac, 1.0), "train + val + test fractions müssen 1 ergeben"
 
     # Automatisch optimale Fenstergröße bestimmen
-    slide_steps = n_folds - 1
-    window_size = int(data_len / (1 + slide_steps * slide_fraction))
-
+    window_size = int(data_len / (1 + (n_folds - 1) * slide_fraction))
     slide_step = int(window_size * slide_fraction)
 
     for fold in range(n_folds):
@@ -163,6 +180,100 @@ def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fra
 
     return fold_data
 
+def split_data_time_series_expanding_window(X, y, n_splits,val_frac = 0.2):
+    fold_data = []
+    tscv = TimeSeriesSplit(n_splits= n_splits)
+    for train_idx, test_idx in tscv.split(X):
+        # vom Trainingsset Validation rausnehmen
+        val_split = int(len(train_idx) * val_frac)
+        val_idx = train_idx[-val_split:]
+        real_train_idx = train_idx[:-val_split]
+        
+        X_train, y_train = X[real_train_idx], y[real_train_idx]
+        X_val, y_val     = X[val_idx], y[val_idx]
+        X_test, y_test   = X[test_idx], y[test_idx]
+
+        fold_data.append({
+            "train": (X_train, y_train),
+            "val": (X_val, y_val),
+            "test": (X_test, y_test)
+        })
+    return fold_data
+
+def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset, hp_function, SEED, device):
+    
+    def objective(trial):
+        set_seed(SEED)  # device übergeben
+        train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, batch_size = 64)
+
+        hp = hp_function(trial)
+        
+        model = Model(input_size=X_train.shape[2], hp=hp).to(device)
+        model = torch.compile(model)
+        criterion = nn.MSELoss().to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
+
+        num_epochs = 15
+        patience = 7
+        best_val_loss = float('inf')
+        early_stopping_counter = 0
+
+        for epoch in range(num_epochs):
+            model.train()
+            train_loss = 0.0
+
+            for X_batch, y_batch in train_loader:
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+                optimizer.zero_grad()
+                y_pred = model(X_batch)
+                loss = criterion(y_pred, y_batch)
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+
+            train_loss /= len(train_loader)
+
+            # Validation
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for X_batch, y_batch in val_loader:
+                    X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+                    y_pred = model(X_batch)
+                    loss = criterion(y_pred, y_batch)
+                    val_loss += loss.item()
+
+            val_loss /= len(val_loader)
+
+            # Optuna-Pruning Check
+            trial.report(val_loss, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
+
+            # Early Stopping Check
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                early_stopping_counter = 0
+            else:
+                early_stopping_counter += 1
+                if early_stopping_counter >= patience:
+                    break
+
+        return best_val_loss
+
+    # Study with HyperbandPruner
+    sampler = optuna.samplers.TPESampler(seed=SEED) 
+    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
+    study = optuna.create_study(direction='minimize', pruner=pruner, sampler=sampler)
+    study.optimize(objective, n_trials=10, n_jobs=1)
+
+    # Show Best Result
+    print("Best trial parameters:")
+    for key, value in study.best_trial.params.items():
+        print(f"{key}: {value}")
+    
+    best_hp = study.best_trial.params
+    return study, best_hp
 
 def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
     """
@@ -268,8 +379,8 @@ def load_best_hp(modelName, SEED):
 
 #return final model
 def final_model_training_flex(X_train, best_hp, Model, train_dataset, val_dataset, test_dataset, SEED, device, return_final = False):
-    set_seed(SEED, device)
-    train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, batch_size = 32)
+    set_seed(SEED)
+    train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train= False, batch_size= 64)
 
     final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
     criterion = nn.MSELoss()

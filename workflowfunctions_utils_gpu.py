@@ -18,6 +18,10 @@ from scipy import stats
 # Machine Learning & Statistics
 from sklearn.metrics import mean_squared_error
 
+# Hyperparametertuning
+import optuna
+from optuna.pruners import HyperbandPruner
+
 # PyTorch & Deep Learning Libraries
 import torch
 import torch.nn as nn
@@ -185,12 +189,12 @@ def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
 
 
 
-def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True):
+def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True, batch_size = 128):
     g = torch.Generator()
     g.manual_seed(seed)
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=shuffle_train, drop_last=False, num_workers=0, generator=g, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size= batch_size, shuffle=shuffle_train, drop_last=False, num_workers=0, generator=g, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size= batch_size, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size= batch_size, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
     return train_loader, test_loader, val_loader
 
 

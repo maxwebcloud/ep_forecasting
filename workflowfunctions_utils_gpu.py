@@ -1,9 +1,11 @@
 # Import Libraries
+
 # Standard Libraries
-import random
 import os
+import random
 import pickle
 import json
+import time
 
 # Numerical Libraries
 import numpy as np
@@ -11,12 +13,10 @@ import pandas as pd
 
 # Visualization Libraries
 import matplotlib.pyplot as plt
+from scipy import stats
 
 # Machine Learning & Statistics
 from sklearn.metrics import mean_squared_error
-
-# Jupyter Notebook Imports
-import import_ipynb
 
 # PyTorch & Deep Learning Libraries
 import torch
@@ -28,12 +28,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from phased_lstm_implementation import PLSTM, Model
 import joblib
 scaler_y = joblib.load("data/scaler_y.pkl")
-
-# Hyperparameter Tuning
-import optuna
-from optuna.pruners import HyperbandPruner
-
-import time 
 
 
 
@@ -211,6 +205,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
         hp = hp_function(trial)
         
         rnn_model = Model(input_size=X_train.shape[2], hp=hp).to(device)
+        rnn_model = torch.compile(rnn_model)
         criterion = nn.MSELoss().to(device)
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
@@ -309,6 +304,7 @@ def final_model_training(X_train, best_hp, Model, train_dataset, val_dataset, te
     train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
     final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
+    rnn_model = torch.compile(final_model)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
@@ -480,7 +476,7 @@ def plot_forecast(seq_length, df_final_viz, train_predictions_actual, val_predic
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
 
-
+"""
 def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelName, SEED):
 
     residuals = y_true - y_pred
@@ -505,6 +501,69 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
     
+
+
+
+"""
+
+
+def plot_residuals_with_index(y_true, y_pred, df_final_viz,
+                              seq_length, model_name, seed,
+                              bins="auto"):
+    """
+    Generate and save three separate residual plots:
+      1. Residuals over time
+      2. Histogram of residuals with normal density
+      3. Q-Q plot comparing residuals to a normal distribution
+
+    """
+    # Compute residuals and flatten to 1D
+    residuals = (y_true - y_pred).ravel() #ravel for flattening 
+
+    # Determine time index range for the test period
+    start_idx = 31056 + seq_length
+    index_range = df_final_viz.index[start_idx : start_idx + len(residuals)]
+
+    # Ensure output directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # 1) Plot residuals over time
+    plt.figure(figsize=(10, 4))
+    plt.plot(index_range, residuals, label="Residuals")
+    plt.axhline(0, color="black", linestyle="--", linewidth=1)
+    plt.title(f"Residuals over Time — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Time")
+    plt.ylabel("Prediction Error")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_time_{seed}.png", bbox_inches="tight")
+    plt.close()
+
+    # 2) Plot histogram of residuals with normal PDF overlay
+    mu, sigma = residuals.mean(), residuals.std(ddof=1)
+    x_vals = np.linspace(mu - 4*sigma, mu + 4*sigma, 200)
+
+    plt.figure(figsize=(6, 4))
+    plt.hist(residuals, bins=bins, density=True, edgecolor="black")
+    plt.plot(x_vals, stats.norm.pdf(x_vals, mu, sigma), linestyle="--", label="Normal PDF")
+    plt.title(f"Histogram of Residuals — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Residual")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_hist_{seed}.png", bbox_inches="tight")
+    plt.close()
+
+    # 3) Plot Q-Q plot of residuals
+    plt.figure(figsize=(6, 6))
+    stats.probplot(residuals, dist="norm", plot=plt)
+    plt.title(f"Q-Q Plot of Residuals — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Theoretical Quantiles")
+    plt.ylabel("Ordered Values")
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_qq_{seed}.png", bbox_inches="tight")
+    plt.close()
 
 
 def print_num_parameters(final_model, modelName):

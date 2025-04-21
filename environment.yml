@@ -1,7 +1,8 @@
 name: ep_forecasting_env
 channels:
-  - defaults
   - conda-forge
+  - pytorch
+  - defaults
 dependencies:
   - python=3.9
   - numpy
@@ -12,9 +13,14 @@ dependencies:
   - statsmodels
   - optuna
   - joblib
-  - pytorch       
+  - pytorch
+  - torchvision
+  - torchaudio
+  - sqlite
+  - ipython
+  - ipykernel        
   - pip
   - pip:
-    - import-ipynb  
-    - shap          
-    - rich         
+    - import-ipynb
+    - shap
+    - rich

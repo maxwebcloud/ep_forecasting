@@ -69,7 +69,7 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
             else:
                 folds = split_data_time_series_expanding_window(data, target, n_splits = 5)
             
-
+            best_rmse = float('inf')
             #Schleife über jeden Fold
             for fold_idx, fold in enumerate(folds):
                 console.print(f"\n[bold turquoise2]Fold [{fold_idx+1}/{n_folds}]: [/bold turquoise2]")
@@ -126,6 +126,17 @@ def cross_validate_time_series(models, seeds, data, target, train_size=0.6, val_
 
                 rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
                 fold_rmses.append(rmse)
+
+                if rmse < best_rmse:
+                    best_rmse = rmse
+                    best_model = trained_model
+                    with_seed = seed
+                    with_hp = best_hp
+            
+            # Speichern der Gewichte des besten Modells pro Seed und dessen Hyperparameter
+            torch.save(best_model.state_dict(), f"saved_models/{model.name}_model_final_{with_seed}_cv.pth")
+            with open(f"best_hp_all_models/best_hp_{model.name}_{with_seed}_cv.json", "w") as f:
+                json.dump(with_hp, f)
 
             avg_rmse = np.mean(fold_rmses)
             results.append({

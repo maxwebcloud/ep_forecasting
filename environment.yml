@@ -9,8 +9,12 @@ dependencies:
   - matplotlib
   - seaborn
   - scikit-learn
-  - tensorflow
-  - keras
-  - pip
-  #- import_ipynb Requires pip – not available via conda
   - statsmodels
+  - optuna
+  - joblib
+  - pytorch       
+  - pip
+  - pip:
+    - import-ipynb  
+    - shap          
+    - rich         

@@ -1,0 +1,20 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Cross-validation parameters:
+  n_folds: 5
+  train_size: 0.6
+  val_size: 0.2
+  test_size: 0.2
+  sequence_length: 24
+  step_size: 1
+  variance_ratio: 0.8
+  single_step: True
+
+Model: lstm
+  Device: mps
+  Seed 81: RMSE = 0.0286
+  Average RMSE: 0.0286
+  Runtime: 15.28 minutes (estimated)
+
+Total runtime across all models: 15.28 minutes

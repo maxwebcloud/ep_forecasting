@@ -61,7 +61,7 @@ def set_seed(SEED, device=None):
         try:
             torch.mps.manual_seed(SEED)
         except AttributeError:
-            pass  # Falls nicht verfügbar, kein Problem
+            pass  
 
     torch.use_deterministic_algorithms(True)
 
@@ -199,6 +199,21 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_trai
 
 
 
+def init_weights(m):
+    if isinstance(m, (nn.Linear, nn.RNN, nn.LSTM, nn.GRU)):
+        for name, param in m.named_parameters():
+            if 'weight' in name and param.dim() >= 2:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+    elif m.__class__.__name__ == "PLSTM":
+        for name, param in m.named_parameters():
+            if 'weight' in name and param.dim() >= 2:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+
+                
 # Objective-function with Hyperband-Pruning 
 def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset, hp_function, SEED, device):
     
@@ -209,7 +224,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
         hp = hp_function(trial)
         
         rnn_model = Model(input_size=X_train.shape[2], hp=hp).to(device)
-        rnn_model = torch.compile(rnn_model)
+        #rnn_model = torch.compile(rnn_model)
         criterion = nn.MSELoss().to(device)
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
@@ -265,7 +280,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler=sampler)
-    study.optimize(objective, n_trials=10, n_jobs=1)
+    study.optimize(objective, n_trials=5, n_jobs=1)
 
     # Show Best Result
     print("Best trial parameters:")
@@ -308,7 +323,7 @@ def final_model_training(X_train, best_hp, Model, train_dataset, val_dataset, te
     train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
     final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
-    rnn_model = torch.compile(final_model)
+    #rnn_model = torch.compile(final_model)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
@@ -383,7 +398,7 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
 # load trained model  
 def load_model(Model, hp, X_train, SEED, device):
     model_final = Model(input_size=X_train.shape[2], hp=hp).to(device)
-    model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth", map_location=device))
+    model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth", map_location=device, weights_only=True))
     model_final.eval()
     return model_final
 

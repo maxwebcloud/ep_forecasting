@@ -305,11 +305,11 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
     return train_loader, val_loader, test_loader
 
 
-def hyperparameter_tuning(Model, input_size, folds, hp_function, seed, device):
+def hyperparameter_tuning(Model, input_size, folds, seed, device):
 
     def objective(trial):
         val_losses = []
-        hp = hp_function(trial)
+        hp = Model.suggest_hyperparameters(trial)
 
         for fold_id, fold in enumerate(folds):
             set_seed(seed, device)
@@ -324,14 +324,14 @@ def hyperparameter_tuning(Model, input_size, folds, hp_function, seed, device):
             criterion = nn.MSELoss().to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
 
-            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, device, seed, num_epochs = 15, patience = 7)
+            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs = 15, patience = 7, seed = seed)
             val_losses.append(best_val_loss)
 
         avg_val_loss = np.mean(val_losses)
         trial.report(avg_val_loss, 0)
         return avg_val_loss
 
-    sampler = optuna.samplers.TPESampler(seed=SEED)
+    sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
     study.optimize(objective, n_trials=10, n_jobs=1)
@@ -355,6 +355,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
 
     for epoch in range(num_epochs):
         model.train()
+        train_loss = 0.0
         for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
@@ -379,7 +380,8 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         val_loss /= len(val_loader)
         val_loss_history.append(val_loss)
 
-        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        if final:
+            print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
         # Early Stopping
         if val_loss < best_val_loss:
@@ -397,7 +399,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         return best_val_loss
 
 def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val_size=0.2, test_size=0.2, 
-                               sequence_length=24, step_size=1, n_folds = 5, sliding_window = True, variance_ratio=0.8, single_step= True):
+                               sequence_length=24, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
     
     console = Console()
 
@@ -435,6 +437,8 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     # Feature Anzahl ermitteln
     X_train_seq, _ = initial_split_sequenced[0]["train"]
     amount_features = X_train_seq.shape[2]
+    X_train_pre, _ = initial_split_preprocessed[0]["train"]
+    print(X_train_pre.shape)
 
     for model in models:
         for seed in seeds:
@@ -443,7 +447,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             #Hyperparametertuning
             console.print("\n[bold turquoise2]Hyperparametertuning: [/bold turquoise2]")
-            study, best_hp = hyperparameter_tuning(model, amount_features, folds_tensordatasets, model.suggest_hyperparameters, seed, device)
+            study, best_hp = hyperparameter_tuning(model, amount_features, folds_tensordatasets, seed, device)
             #save_best_hp(model, study, seed)
 
 
@@ -470,3 +474,14 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
             print(rmse)
+
+
+#testweise Ausführung 
+
+with open("data/df_final_eng.pkl", "rb") as f:
+        df_final = pickle.load(f)
+
+X = df_final[df_final.columns.drop('price actual')].values
+y = np.array(df_final['price actual']).reshape(-1,1)
+
+cross_validate_time_series([LSTMModel], [42], X, y,torch.device("cpu"))

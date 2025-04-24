@@ -305,15 +305,15 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
 
 
 # save best hyperparameters
-def save_best_hp(modelName, study, SEED):
+def save_best_hp(model, study, SEED):
     best_hp = study.best_trial.params
-    with open(f"best_hp_all_models/best_hp_{modelName}_{SEED}.json", "w") as f:
+    with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "w") as f:
         json.dump(best_hp, f)
 
 
 # load best hyperparameters 
-def load_best_hp(modelName, SEED):
-    with open(f"best_hp_all_models/best_hp_{modelName}_{SEED}.json", "r") as f:
+def load_best_hp(model, SEED):
+    with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "r") as f:
         best_hp = json.load(f)
 
 

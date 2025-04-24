@@ -467,7 +467,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             final_model, train_loss_history, val_loss_history = model_train(final_model, criterion, optimizer, val_loader, train_loader, device, 
                                                                             num_epochs = 50, patience = 10, seed = seed, final = True)
-            torch.save(final_model.state_dict(), f"saved_models/{Model.name}_model_final_{seed}.pth")
+            torch.save(final_model.state_dict(), f"saved_models/{model.name}_model_final_{seed}.pth")
             #final_model = load_model(model_class, best_hp, X_train, seed, device)
             #train_history_plot(train_loss_history, val_loss_history, model.name, seed)
 
@@ -478,6 +478,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             #predictions_inv = scaler_y.inverse_transform(predictions)
 
             rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
+            console.print(f"[bold turquoise2]Out of Sample Performance: {rmse}[/bold turquoise2]")
             final_results.append({
             "model": model.name,
             "seed": seed,

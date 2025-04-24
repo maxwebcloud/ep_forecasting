@@ -1,30 +1,27 @@
+"""
+This script iterates through all 'summary_*.txt' files in the 'model_metrics_overview' folder,
+merges their content into one output file, and extracts runtime values from each file to compute
+the aggregated total runtime across all models.
+"""
+
 from pathlib import Path
 import re
 
-input_folder = Path("model_metrics_overview")
-output_file = input_folder / "combined_summary.txt"
+folder = Path("model_metrics_overview")
+files = sorted(folder.glob("summary_*.txt"))
+if not files:
+    raise SystemExit("No summary files found.")
 
-# Regex zum Finden von Zeilen wie: "Total runtime across all models: 12.34 minutes"
-RUNTIME_RE = re.compile(r"Total runtime across all models:\s*([0-9.]+)\s*minutes")
+runtime_re = re.compile(r"Runtime:\s*([\d.]+)\s*minutes")
+total = 0.0
 
-summary_files = sorted(input_folder.glob("summary_*.txt"))
-
-if not summary_files:
-    raise SystemExit(f"No summary_*.txt files found in {input_folder}")
-
-total_runtime = 0.0
-
-with output_file.open("w", encoding="utf-8") as out:
-    for file in summary_files:
-        out.write(f"\n===== {file.name} =====\n\n")
-        text = file.read_text(encoding="utf-8")
+with (folder / "combined_summary.txt").open("w", encoding="utf-8") as out:
+    for f in files:
+        text = f.read_text(encoding="utf-8")
         out.write(text + "\n")
+        if match := runtime_re.search(text):
+            total += float(match.group(1))
+    out.write(f"\nAggregated total runtime across all models: {total:.2f} minutes\n")
 
-        match = RUNTIME_RE.search(text)
-        if match:
-            total_runtime += float(match.group(1))
-
-    out.write(f"\nAggregated total runtime across all models: {total_runtime:.2f} minutes\n")
-
-print(f"✅ Merged {len(summary_files)} files ➜ {output_file.resolve()}")
-print(f"⏱️  Aggregated total runtime: {total_runtime:.2f} minutes")
+print(f"✅ Merged {len(files)} files ➜ {folder / 'combined_summary.txt'}")
+print(f"⏱️  Aggregated total runtime: {total:.2f} minutes")

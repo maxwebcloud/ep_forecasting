@@ -138,7 +138,7 @@ for key, value in CV_PARAMS.items():
 # ============================================================================
 # Data Loading
 # ============================================================================
-print("\nLoading data and extract feature matrix (X) and target vector (Y) ")
+print("\nLoading data and extract feature matrix (X) and target vector (Y)... ")
 with open("data/df_final_eng.pkl", "rb") as f:
     df_final = pickle.load(f)
 
@@ -154,8 +154,6 @@ for model_class in selected_models:
     model_name = getattr(model_class, "name", model_class.__name__)
     use_gpu = args.device == "mps"
     device = get_device(use_gpu=use_gpu)
-
-    print(f"\n[INFO] Running {model_name} on {'MPS' if use_gpu else 'CPU'}")
 
     if device.type == "mps":
         assert torch.mps.current_allocated_memory() == 0, "⚠️ MPS memory not cleared!"
@@ -185,8 +183,7 @@ for model_class in selected_models:
 end_time = time.time()
 total_runtime = (end_time - start_time) / 60
 
-summary_lines = ["\n=== RMSE Summary (Cross-Validation) ===", "\nCross-validation parameters:"]
-summary_lines += [f"  {k}: {v}" for k, v in CV_PARAMS.items()]
+summary_lines = ["\n=== RMSE Summary (Cross-Validation) ==="]
 
 processed_results = {}
 for result in results:
@@ -200,17 +197,16 @@ avg_runtime = total_runtime / len(selected_models) if selected_models else 0
 for model_name, results_list in processed_results.items():
     rmses = [rmse for _, rmse in results_list]
     summary_lines.append(f"\nModel: {model_name}")
-    summary_lines.append(f"  Device: {args.device}")
+    summary_lines.append(f"  Device: {device_choice}")
     for seed, rmse in results_list:
         summary_lines.append(f"  Seed {seed}: RMSE = {rmse:.4f}")
     summary_lines.append(f"  Average RMSE: {np.mean(rmses):.4f}")
-    summary_lines.append(f"  Runtime: {avg_runtime:.2f} minutes (estimated)")
+    summary_lines.append(f"  Runtime: {avg_runtime:.2f} minutes")
 
-summary_lines.append(f"\nTotal runtime across all models: {total_runtime:.2f} minutes")
 summary_text = "\n".join(summary_lines)
 
 # ============================================================================
-# Save Results
+# Save Results in .txt file which will be summarized later 
 # ============================================================================
 print(summary_text)
 summary_dir.mkdir(exist_ok=True)

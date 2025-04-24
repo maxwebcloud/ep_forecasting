@@ -53,15 +53,16 @@ class SimpleRNN(nn.Module):
         out = self.dropout2(out)
         out = self.fc2(out)
         return out
-
-def suggest_rnn_hyperparameters(trial):
-    return{
-            'rnn_units': trial.suggest_int('rnn_units', 32, 256, step=16),
-            'dropout_rate_rnn': trial.suggest_float('dropout_rate_rnn', 0.1, 0.5, step=0.1),
-            'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
-            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
-            'learning_rate': trial.suggest_categorical('learning_rate', [1e-2, 1e-3, 1e-4])
-    }
+    
+    @staticmethod
+    def suggest_hyperparameters(trial):
+        return{
+                'rnn_units': trial.suggest_int('rnn_units', 32, 256, step=16),
+                'dropout_rate_rnn': trial.suggest_float('dropout_rate_rnn', 0.1, 0.5, step=0.1),
+                'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
+                'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
+                'learning_rate': trial.suggest_categorical('learning_rate', [1e-2, 1e-3, 1e-4])
+        }
 
 
 # LSTM Model ---------------------------------------------------------------------------------------------------------------------------------------------------
@@ -87,14 +88,15 @@ class LSTMModel(nn.Module):
         out = self.fc2(out)
         return out
     
-def suggest_lstm_hyperparameters(trial):
-    return{
-        'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
-        'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
-        'dense_units': trial.suggest_int('dense_units', 16, 64, step=16),
-        'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.3, step=0.1),
-        'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
-    }
+    @staticmethod
+    def suggest_hyperparameters(trial):
+        return{
+            'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
+            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
+            'dense_units': trial.suggest_int('dense_units', 16, 64, step=16),
+            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.3, step=0.1),
+            'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
+        }
 
 # SLSTM Model ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -125,16 +127,17 @@ class StackedLSTMModel(nn.Module):
         out = self.fc2(out)
         return out
 
-def suggest_slstm_hyperparameters(trial):
-    return{
-        'lstm_units_1': trial.suggest_int('lstm_units_1', 32, 256, step=16),
-        'lstm_units_2': trial.suggest_int('lstm_units_2', 32, 256, step=16),
-        'dropout_rate_lstm_1': trial.suggest_float('dropout_rate_lstm_1', 0.1, 0.3, step=0.1),
-        'dropout_rate_lstm_2': trial.suggest_float('dropout_rate_lstm_2', 0.1, 0.3, step=0.1),
-        'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
-        'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
-        'learning_rate': trial.suggest_categorical('learning_rate', [1e-2, 1e-3, 1e-4])
-    }
+    @staticmethod
+    def suggest_hyperparameters(trial):
+        return{
+            'lstm_units_1': trial.suggest_int('lstm_units_1', 32, 256, step=16),
+            'lstm_units_2': trial.suggest_int('lstm_units_2', 32, 256, step=16),
+            'dropout_rate_lstm_1': trial.suggest_float('dropout_rate_lstm_1', 0.1, 0.3, step=0.1),
+            'dropout_rate_lstm_2': trial.suggest_float('dropout_rate_lstm_2', 0.1, 0.3, step=0.1),
+            'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
+            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
+            'learning_rate': trial.suggest_categorical('learning_rate', [1e-2, 1e-3, 1e-4])
+        }
 
 
 #PLSTM Model -----------------------------------------------------------------------------------------------------------------------------------------------
@@ -160,11 +163,12 @@ class PhasedLSTMModel(nn.Module):
         out = self.fc2(out)
         return out
 
-def suggest_plstm_hyperparameters(trial):
-    return{
-        'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
-        'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
-        'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
-        'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
-        'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
-    }
+    @staticmethod
+    def suggest_hyperparameters(trial):
+        return{
+            'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
+            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
+            'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
+            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
+            'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
+        }

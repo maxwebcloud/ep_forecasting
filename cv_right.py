@@ -12,7 +12,7 @@ import optuna
 from optuna.pruners import HyperbandPruner
 from rich import print
 from rich.console import Console
-from workflowfunctions_utils_gpu import set_seed, get_predictions_in_batches, get_device
+from workflowfunctions_utils_gpu import set_seed, get_predictions_in_batches, get_device, save_best_hp
 from models_utils import *
 
 
@@ -154,7 +154,7 @@ def preprocessing(folds, variance_ratio=0.8):
             y_test = scaler_y.transform(y_test)
 
         # PCA
-        pca = PCA(n_components=variance_ratio)
+        pca = PCA(n_components= variance_ratio)
         pca.fit(X_train)
         X_train = pca.transform(X_train)
         X_val = pca.transform(X_val)
@@ -233,6 +233,8 @@ def create_sequences(X, y, history_size, target_size, step=1, single_step=False)
         data.append(X[indices])
 
         if single_step:
+            if i + target_size >= len(y):
+                break
             labels.append(y[i + target_size])
         else:
             labels.append(y[i : i + target_size])
@@ -259,7 +261,9 @@ def get_tensordatasets_from_folds(folds):
             if split_data is not None:
                 X, y = split_data
                 X_tensor = torch.tensor(X, dtype=torch.float32)
-                y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1)
+                y_tensor = torch.tensor(y, dtype=torch.float32)
+                if y_tensor.ndim == 1:
+                    y_tensor = y_tensor.view(-1, 1)
                 fold_tensor[split_name] = TensorDataset(X_tensor, y_tensor)
 
         tensor_folds.append(fold_tensor)
@@ -305,7 +309,7 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
     return train_loader, val_loader, test_loader
 
 
-def hyperparameter_tuning(Model, input_size, folds, seed, device):
+def hyperparameter_tuning(Model, folds, seed, device):
 
     def objective(trial):
         val_losses = []
@@ -316,10 +320,11 @@ def hyperparameter_tuning(Model, input_size, folds, seed, device):
 
             train_dataset = fold["train"]
             val_dataset = fold["val"]
+            num_features = train_dataset.tensors[0].shape[-1]
 
             train_loader, val_loader, _ = get_dataloaders(seed, train_dataset, val_dataset)
      
-            model = Model(input_size= input_size, hp=hp).to(device)
+            model = Model(input_size= num_features, hp=hp).to(device)
             model = torch.compile(model)
             criterion = nn.MSELoss().to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
@@ -334,7 +339,7 @@ def hyperparameter_tuning(Model, input_size, folds, seed, device):
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=10, n_jobs=1)
+    study.optimize(objective, n_trials=3, n_jobs=1)
 
     print("Best trial parameters:")
     for key, value in study.best_trial.params.items():
@@ -434,11 +439,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=True)
     initial_split_tensordatasets = get_tensordatasets_from_folds(initial_split_sequenced)
   
-    # Feature Anzahl ermitteln
-    X_train_seq, _ = initial_split_sequenced[0]["train"]
-    amount_features = X_train_seq.shape[2]
-    X_train_pre, _ = initial_split_preprocessed[0]["train"]
-    print(X_train_pre.shape)
+    final_results = []
 
     for model in models:
         for seed in seeds:
@@ -447,13 +448,16 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             #Hyperparametertuning
             console.print("\n[bold turquoise2]Hyperparametertuning: [/bold turquoise2]")
-            study, best_hp = hyperparameter_tuning(model, amount_features, folds_tensordatasets, seed, device)
-            #save_best_hp(model, study, seed)
+            study, best_hp = hyperparameter_tuning(model, folds_tensordatasets, seed, device)
+            save_best_hp(model, study, seed)
 
 
             # Finales Modelltraining
             console.print("\n[bold turquoise2]Final Training[/bold turquoise2]")
+            X_train_seq, _ = initial_split_sequenced[0]["train"]
+            amount_features = X_train_seq.shape[2]
             final_model = model(input_size= amount_features, hp=best_hp).to(device)
+            #final_model = torch.compile(final_model)
             criterion = nn.MSELoss()
             optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
             train_dataset = initial_split_tensordatasets[0]["train"]
@@ -461,19 +465,27 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             test_dataset = initial_split_tensordatasets[0]["test"]
             train_loader, val_loader, test_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset)
 
-            final_model, train_loss_history, val_loss_history = model_train(model, criterion, optimizer, val_loader, train_loader, device, 
-                                                                            num_epochs = 50, patience = 10, seed = seed, final = False)
+            final_model, train_loss_history, val_loss_history = model_train(final_model, criterion, optimizer, val_loader, train_loader, device, 
+                                                                            num_epochs = 50, patience = 10, seed = seed, final = True)
+            torch.save(final_model.state_dict(), f"saved_models/{Model.name}_model_final_{seed}.pth")
             #final_model = load_model(model_class, best_hp, X_train, seed, device)
             #train_history_plot(train_loss_history, val_loss_history, model.name, seed)
 
             # Modellevaluation
             _, y_test_seq = initial_split_sequenced[0]["test"]
             predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device = torch.device("cpu"))
-            y_test_inv = scaler_y.inverse_transform(y_test_seq.reshape(-1,1))
-            predictions_inv = scaler_y.inverse_transform(predictions)
+            #y_test_inv = scaler_y.inverse_transform(y_test_seq.reshape(-1,1))
+            #predictions_inv = scaler_y.inverse_transform(predictions)
 
             rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
-            print(rmse)
+            final_results.append({
+            "model": model.name,
+            "seed": seed,
+            "rmse": rmse
+            })
+    
+    final_rmse_df = pd.DataFrame(final_results)
+    return final_rmse_df
 
 
 #testweise Ausführung 
@@ -484,4 +496,5 @@ with open("data/df_final_eng.pkl", "rb") as f:
 X = df_final[df_final.columns.drop('price actual')].values
 y = np.array(df_final['price actual']).reshape(-1,1)
 
-cross_validate_time_series([LSTMModel], [42], X, y,torch.device("cpu"))
+results = cross_validate_time_series([SimpleRNN, LSTMModel], [42, 81], X, y,torch.device("cpu"))
+print(results)

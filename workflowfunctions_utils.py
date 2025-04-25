@@ -1,9 +1,11 @@
 # Import Libraries
+
 # Standard Libraries
-import random
 import os
+import random
 import pickle
 import json
+import time
 
 # Numerical Libraries
 import numpy as np
@@ -11,12 +13,14 @@ import pandas as pd
 
 # Visualization Libraries
 import matplotlib.pyplot as plt
+from scipy import stats
 
 # Machine Learning & Statistics
 from sklearn.metrics import mean_squared_error
 
-# Jupyter Notebook Imports
-import import_ipynb
+# Hyperparametertuning
+import optuna
+from optuna.pruners import HyperbandPruner
 
 # PyTorch & Deep Learning Libraries
 import torch
@@ -29,28 +33,36 @@ from phased_lstm_implementation import PLSTM, Model
 import joblib
 scaler_y = joblib.load("data/scaler_y.pkl")
 
-# Hyperparameter Tuning
-import optuna
-from optuna.pruners import HyperbandPruner
 
 
-def set_seed(SEED):
+def get_device(use_gpu=True):
+    """
+    Returns the appropriate torch.device based on use_gpu flag.
+    Supports Apple M1/M2 (MPS) or falls back to CPU.
+    """
+    if use_gpu and torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")
 
-    # PyTorch Seed
+
+def set_seed(SEED, device=None):
+    import torch
+    import numpy as np
+    import random
+    import os
+
     torch.manual_seed(SEED)
-
-    # NumPy Seed
     np.random.seed(SEED)
-
-    # Python random seed
     random.seed(SEED)
-    # Determinismus erzwingen
-    torch.backends.cudnn.deterministic = True
-
-    # Keine automatische Optimierung
-    torch.backends.cudnn.benchmark = False  
-  
     os.environ["PYTHONHASHSEED"] = str(SEED)
+
+    if device is not None and device.type == "mps":
+        try:
+            torch.mps.manual_seed(SEED)
+        except AttributeError:
+            pass  
+
     torch.use_deterministic_algorithms(True)
 
 # Data Import
@@ -86,6 +98,72 @@ def import_data():
     return X_train, y_train, X_val, y_val, X_test, y_test, df_final_viz
 
 
+"""
+
+# Data Import (long versions)
+with open("data/X_train_long.pkl", "rb") as f:
+    X_train = pickle.load(f)
+with open("data/y_train_long.pkl", "rb") as f:
+    y_train = pickle.load(f)
+with open("data/X_val_long.pkl", "rb") as f:
+    X_val = pickle.load(f)
+with open("data/y_val_long.pkl", "rb") as f:
+    y_val = pickle.load(f)
+with open("data/X_test_long.pkl", "rb") as f:
+    X_test = pickle.load(f)
+with open("data/y_test_long.pkl", "rb") as f:
+    y_test = pickle.load(f)
+with open("data/df_final_viz.pkl", "rb") as f:
+    df_final_viz = pickle.load(f)
+
+
+"""
+
+""" 
+
+# Data Import (red1 versions)
+import pickle
+
+with open("data/X_train_red1.pkl", "rb") as f:
+    X_train = pickle.load(f)
+with open("data/y_train_red1.pkl", "rb") as f:
+    y_train = pickle.load(f)
+with open("data/X_val_red1.pkl", "rb") as f:
+    X_val = pickle.load(f)
+with open("data/y_val_red1.pkl", "rb") as f:
+    y_val = pickle.load(f)
+with open("data/X_test_red1.pkl", "rb") as f:
+    X_test = pickle.load(f)
+with open("data/y_test_red1.pkl", "rb") as f:
+    y_test = pickle.load(f)
+with open("data/df_final_viz.pkl", "rb") as f:
+    df_final_viz = pickle.load(f)
+
+
+"""
+
+"""
+# Data Import (red2 versions)
+import pickle
+
+with open("data/X_train_red2.pkl", "rb") as f:
+    X_train = pickle.load(f)
+with open("data/y_train_red2.pkl", "rb") as f:
+    y_train = pickle.load(f)
+with open("data/X_val_red2.pkl", "rb") as f:
+    X_val = pickle.load(f)
+with open("data/y_val_red2.pkl", "rb") as f:
+    y_val = pickle.load(f)
+with open("data/X_test_red2.pkl", "rb") as f:
+    X_test = pickle.load(f)
+with open("data/y_test_red2.pkl", "rb") as f:
+    y_test = pickle.load(f)
+with open("data/df_final_viz.pkl", "rb") as f:
+    df_final_viz = pickle.load(f)
+
+
+"""
+
 
 # Setting the Number of CPU Threads in PyTorch
 def set_num_cpu_threads():
@@ -95,52 +173,62 @@ def set_num_cpu_threads():
 
 
 
-def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
-    # Convert data into PyTorch tensors
-    X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
 
+def get_tensordatasets(X_train, y_train, X_val, y_val, X_test, y_test):
+    X_train_tensor = torch.tensor(X_train, dtype=torch.float32)  
+    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
     X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
     y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1)
-
     X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
     y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
-
-    # Create TensorDataset for train, validation, and test sets
     train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
     val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
     test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
-
     return train_dataset, val_dataset, test_dataset
 
 
-def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True):
 
+
+def get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train=True, batch_size = 128):
     g = torch.Generator()
     g.manual_seed(seed)
-
-    #DataLoader
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=shuffle_train, drop_last=False, num_workers=0, generator= g)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, drop_last=False, num_workers=0, generator = g)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, drop_last=False, num_workers=0, generator=g)
-    
+    train_loader = DataLoader(train_dataset, batch_size= batch_size, shuffle=shuffle_train, drop_last=False, num_workers=0, generator=g, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size= batch_size, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size= batch_size, shuffle=False, drop_last=False, num_workers=0, generator=g, pin_memory=True)
     return train_loader, test_loader, val_loader
 
+
+
+def init_weights(m):
+    if isinstance(m, (nn.Linear, nn.RNN, nn.LSTM, nn.GRU)):
+        for name, param in m.named_parameters():
+            if 'weight' in name and param.dim() >= 2:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+    elif m.__class__.__name__ == "PLSTM":
+        for name, param in m.named_parameters():
+            if 'weight' in name and param.dim() >= 2:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+
+                
 # Objective-function with Hyperband-Pruning 
-def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset,hp_function,SEED):
+def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_dataset, hp_function, SEED, device):
     
     def objective(trial):
-
-        set_seed(SEED)
+        set_seed(SEED, device)  # device übergeben
         train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
         hp = hp_function(trial)
         
-        rnn_model = Model(input_size=X_train.shape[2], hp=hp)
-        criterion = nn.MSELoss()
+        rnn_model = Model(input_size=X_train.shape[2], hp=hp).to(device)
+        #rnn_model = torch.compile(rnn_model)
+        criterion = nn.MSELoss().to(device)
         optimizer = torch.optim.Adam(rnn_model.parameters(), lr=hp['learning_rate'])
 
-        num_epochs = 3
+        num_epochs = 15
         patience = 7
         best_val_loss = float('inf')
         early_stopping_counter = 0
@@ -150,7 +238,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
             train_loss = 0.0
 
             for X_batch, y_batch in train_loader:
-                X_batch, y_batch = X_batch, y_batch
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
                 optimizer.zero_grad()
                 y_pred = rnn_model(X_batch)
                 loss = criterion(y_pred, y_batch)
@@ -165,7 +253,7 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
             val_loss = 0.0
             with torch.no_grad():
                 for X_batch, y_batch in val_loader:
-                    X_batch, y_batch = X_batch, y_batch
+                    X_batch, y_batch = X_batch.to(device), y_batch.to(device)
                     y_pred = rnn_model(X_batch)
                     loss = criterion(y_pred, y_batch)
                     val_loss += loss.item()
@@ -191,8 +279,21 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
     # Study with HyperbandPruner
     sampler = optuna.samplers.TPESampler(seed=SEED) 
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
+    study = optuna.create_study(direction='minimize', pruner=pruner, sampler=sampler)
+    study.optimize(objective, n_trials=5, n_jobs=1)
+
+    # Show Best Result
+    print("Best trial parameters:")
+    for key, value in study.best_trial.params.items():
+        print(f"{key}: {value}")
+    
+    best_hp = study.best_trial.params
+    return study, best_hp
+    # Study with HyperbandPruner
+    sampler = optuna.samplers.TPESampler(seed=SEED) 
+    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', pruner=pruner, sampler= sampler)
-    study.optimize(objective, n_trials=3, n_jobs=1)
+    study.optimize(objective, n_trials=10, n_jobs=1)
 
     # Show Best Result
     print("Best trial parameters:")
@@ -204,28 +305,29 @@ def hyperparameter_tuning(X_train, Model, train_dataset, val_dataset, test_datas
 
 
 # save best hyperparameters
-def save_best_hp(modelName, study, SEED):
+def save_best_hp(model, study, SEED):
     best_hp = study.best_trial.params
-    with open(f"best_hp_all_models/best_hp_{modelName}_{SEED}.json", "w") as f:
+    with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "w") as f:
         json.dump(best_hp, f)
 
 
 # load best hyperparameters 
-def load_best_hp(modelName, SEED):
-    with open(f"best_hp_all_models/best_hp_{modelName}_{SEED}.json", "r") as f:
+def load_best_hp(model, SEED):
+    with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "r") as f:
         best_hp = json.load(f)
 
 
 # Bestes Modell mit den gefundenen Hyperparametern trainieren
-def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, test_dataset, SEED):
-    set_seed(SEED)
+def final_model_training(X_train, best_hp, Model, train_dataset, val_dataset, test_dataset, SEED, device):
+    set_seed(SEED, device)
     train_loader, _, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset)
 
-    final_model = Model(input_size=X_train.shape[2], hp=best_hp)
+    final_model = Model(input_size=X_train.shape[2], hp=best_hp).to(device)
+    #rnn_model = torch.compile(final_model)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
 
-    num_epochs = 5
+    num_epochs = 50
     train_loss_history = []
     val_loss_history = []
     patience = 10
@@ -236,6 +338,7 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
         final_model.train()
         train_loss = 0.0
         for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
             y_pred = final_model(X_batch)
             loss = criterion(y_pred, y_batch)
@@ -250,13 +353,15 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
         val_loss = 0.0
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
-                y_pred = final_model(X_batch)
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)               
+                y_pred = final_model(X_batch).to(device)
                 loss = criterion(y_pred, y_batch)
                 val_loss += loss.item()
         val_loss /= len(val_loader)
         val_loss_history.append(val_loss)
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        print(f"GPU memory: {torch.mps.current_allocated_memory() / 1024**2:.2f} MB")
 
         # Early Stopping Check
         if val_loss < best_val_loss:
@@ -273,16 +378,16 @@ def final_model_training(X_train, best_hp, Model,train_dataset, val_dataset, tes
     return train_loss_history, val_loss_history 
 
 
-def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
+def train_history_plot(train_loss_history, val_loss_history, model, SEED):
     plt.figure(figsize=(8, 5))
     plt.plot(train_loss_history, label="Train Loss")
     plt.plot(val_loss_history, label="Val Loss")
     plt.xlabel("Epochen")
     plt.ylabel("Loss")
     plt.legend()
-    plt.title(f"Trainings- and Validation Loss {modelName.upper()} ({SEED})")
+    plt.title(f"Trainings- and Validation Loss {model.name.upper()} ({SEED})")
     
-    filename = f"{modelName}_train_history_{SEED}.png"
+    filename = f"{model.name}_train_history_{SEED}.png"
     filepath = os.path.join("plots", filename)
 
     # Speichern & schließen
@@ -291,31 +396,33 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
 
 
 # load trained model  
-def load_model(Model, hp, X_train, SEED):
-    model_final = Model(input_size=X_train.shape[2], hp=hp)
-    model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth"))
+def load_model(model, input_size, seed, device):
+    hp = load_best_hp(model, seed)
+    model_final = Model(input_size=input_size, hp=hp).to(device)
+    model_final.load_state_dict(torch.load(f"saved_models/{model.name}_model_final_{seed}.pth", map_location=device, weights_only=True))
     model_final.eval()
     return model_final
 
 
 
 # Make predictions
-def get_predictions_in_batches(final_model, dataloader):
+def get_predictions_in_batches(final_model, dataloader, device):
     final_model.eval()
     preds = []
     with torch.no_grad():
-        for X_batch, y_batch in dataloader:
-            preds.append(final_model(X_batch).numpy())
+        for X_batch, _ in dataloader:
+            X_batch = X_batch.to(device)
+            preds.append(final_model(X_batch).cpu().numpy())  # Immer .cpu() für späteres numpy
     return np.vstack(preds)
 
 
-def get_predictions(final_model,train_dataset, val_dataset, test_dataset, SEED):
-    set_seed(SEED)
-    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train= False)
+def get_predictions(final_model, train_dataset, val_dataset, test_dataset, SEED, device):
+    set_seed(SEED, device)
+    train_loader, test_loader, val_loader = get_dataloaders(SEED, train_dataset, val_dataset, test_dataset, shuffle_train=False)
 
-    train_predictions = get_predictions_in_batches(final_model, train_loader)
-    validation_predictions = get_predictions_in_batches(final_model, val_loader)
-    test_predictions = get_predictions_in_batches(final_model, test_loader)
+    train_predictions = get_predictions_in_batches(final_model, train_loader, device)
+    validation_predictions = get_predictions_in_batches(final_model, val_loader, device)
+    test_predictions = get_predictions_in_batches(final_model, test_loader, device)
 
     # Inverse transform scaled predictions and scaled target
     train_predictions_actual = scaler_y.inverse_transform(train_predictions)
@@ -323,7 +430,6 @@ def get_predictions(final_model,train_dataset, val_dataset, test_dataset, SEED):
     test_predictions_actual = scaler_y.inverse_transform(test_predictions)
 
     return train_predictions, validation_predictions, test_predictions, train_predictions_actual, validation_predictions_actual, test_predictions_actual
-
 
 def get_unscaled_targets(y_train, y_val, y_test):
     y_train_actual = scaler_y.inverse_transform(y_train.reshape(-1, 1))
@@ -390,7 +496,7 @@ def plot_forecast(seq_length, df_final_viz, train_predictions_actual, val_predic
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
 
-
+"""
 def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelName, SEED):
 
     residuals = y_true - y_pred
@@ -415,6 +521,69 @@ def plot_residuals_with_index(y_true, y_pred, df_final_viz, seq_length, modelNam
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
     
+
+
+
+"""
+
+
+def plot_residuals_with_index(y_true, y_pred, df_final_viz,
+                              seq_length, model_name, seed,
+                              bins="auto"):
+    """
+    Generate and save three separate residual plots:
+      1. Residuals over time
+      2. Histogram of residuals with normal density
+      3. Q-Q plot comparing residuals to a normal distribution
+
+    """
+    # Compute residuals and flatten to 1D
+    residuals = (y_true - y_pred).ravel() #ravel for flattening 
+
+    # Determine time index range for the test period
+    start_idx = 31056 + seq_length
+    index_range = df_final_viz.index[start_idx : start_idx + len(residuals)]
+
+    # Ensure output directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # 1) Plot residuals over time
+    plt.figure(figsize=(10, 4))
+    plt.plot(index_range, residuals, label="Residuals")
+    plt.axhline(0, color="black", linestyle="--", linewidth=1)
+    plt.title(f"Residuals over Time — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Time")
+    plt.ylabel("Prediction Error")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_time_{seed}.png", bbox_inches="tight")
+    plt.close()
+
+    # 2) Plot histogram of residuals with normal PDF overlay
+    mu, sigma = residuals.mean(), residuals.std(ddof=1)
+    x_vals = np.linspace(mu - 4*sigma, mu + 4*sigma, 200)
+
+    plt.figure(figsize=(6, 4))
+    plt.hist(residuals, bins=bins, density=True, edgecolor="black")
+    plt.plot(x_vals, stats.norm.pdf(x_vals, mu, sigma), linestyle="--", label="Normal PDF")
+    plt.title(f"Histogram of Residuals — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Residual")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_hist_{seed}.png", bbox_inches="tight")
+    plt.close()
+
+    # 3) Plot Q-Q plot of residuals
+    plt.figure(figsize=(6, 6))
+    stats.probplot(residuals, dist="norm", plot=plt)
+    plt.title(f"Q-Q Plot of Residuals — {model_name.upper()} (Seed {seed})")
+    plt.xlabel("Theoretical Quantiles")
+    plt.ylabel("Ordered Values")
+    plt.tight_layout()
+    plt.savefig(f"plots/{model_name}_residuals_qq_{seed}.png", bbox_inches="tight")
+    plt.close()
 
 
 def print_num_parameters(final_model, modelName):

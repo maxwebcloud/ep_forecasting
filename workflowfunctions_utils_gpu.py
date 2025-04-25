@@ -396,9 +396,10 @@ def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
 
 
 # load trained model  
-def load_model(Model, hp, X_train, SEED, device):
-    model_final = Model(input_size=X_train.shape[2], hp=hp).to(device)
-    model_final.load_state_dict(torch.load(f"saved_models/{Model.name}_model_final_{SEED}.pth", map_location=device, weights_only=True))
+def load_model(model, input_size, seed, device):
+    hp = load_best_hp(model, seed)
+    model_final = Model(input_size=input_size, hp=hp).to(device)
+    model_final.load_state_dict(torch.load(f"saved_models/{model.name}_model_final_{seed}.pth", map_location=device, weights_only=True))
     model_final.eval()
     return model_final
 

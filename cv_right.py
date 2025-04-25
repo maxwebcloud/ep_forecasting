@@ -12,7 +12,7 @@ import optuna
 from optuna.pruners import HyperbandPruner
 from rich import print
 from rich.console import Console
-from workflowfunctions_utils_gpu import set_seed, get_predictions_in_batches, get_device, save_best_hp
+from workflowfunctions_utils_gpu import set_seed, get_predictions_in_batches, get_device, save_best_hp, train_history_plot
 from models_utils import *
 
 
@@ -472,21 +472,21 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     }]
 
     # Aus Train- und Validationsdaten die Folds erzeugen
-    folds = split_data_time_series_sliding_auto_folds(X_trainVal_full, y_trainVal_full, n_folds=5, slide_fraction=0.2, train_frac=0.8, val_frac=0.2)
+    folds = split_data_time_series_sliding_auto_folds(X_trainVal_full, y_trainVal_full, n_folds=n_folds, slide_fraction=0.2, train_frac=0.8, val_frac=0.2)
 
     # Folds Skalieren + Komprimieren
-    folds_preprocessed = preprocessing(folds)
+    folds_preprocessed = preprocessing(folds, variance_ratio)
 
     # Folds in Sequenzen schneiden + in Tensordtasets wandeln
-    folds_sequenced = create_sequences_for_folds(folds_preprocessed, sequence_length, step_size, step=1, single_step=True)
+    folds_sequenced = create_sequences_for_folds(folds_preprocessed, sequence_length, step_size, step=1, single_step=single_step)
     folds_tensordatasets = get_tensordatasets_from_folds(folds_sequenced)
 
 
     # Initialer Split Skalieren + Komprimieren
-    initial_split_preprocessed = preprocessing(initial_split)
+    initial_split_preprocessed = preprocessing(initial_split, variance_ratio)
 
     # Initialen Split in Sequenzen schneiden + in Tensordatasets wandeln
-    initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=True)
+    initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=single_step)
     initial_split_tensordatasets = get_tensordatasets_from_folds(initial_split_sequenced)
   
     final_results = []
@@ -517,9 +517,9 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             final_model, train_loss_history, val_loss_history = model_train(final_model, criterion, optimizer, val_loader, train_loader, device, 
                                                                             num_epochs = 50, patience = 10, seed = seed, final = True)
-            torch.save(final_model.state_dict(), f"saved_models/{model.name}_model_final_{seed}.pth")
+            torch.save(final_model.state_dict(), f"saved_models/{final_model.name}_model_final_{seed}.pth")
             #final_model = load_model(model_class, best_hp, X_train, seed, device)
-            #train_history_plot(train_loss_history, val_loss_history, model.name, seed)
+            train_history_plot(train_loss_history, val_loss_history, final_model, seed)
 
             # Modellevaluation
             _, y_test_seq = initial_split_sequenced[0]["test"]

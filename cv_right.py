@@ -310,6 +310,19 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
 
 
 def hyperparameter_tuning(Model, folds, seed, device):
+    import time
+    
+    # Callback to track trial times
+    trial_times = {}
+    trial_start_time = None
+    
+    def callback(study, trial):
+        nonlocal trial_times, trial_start_time
+        if trial_start_time is not None:
+            elapsed_time = time.time() - trial_start_time
+            trial_times[trial.number] = elapsed_time
+            print(f"Trial {trial.number} completed in {elapsed_time:.2f} seconds")
+        trial_start_time = time.time()
 
     def objective(trial):
         val_losses = []
@@ -336,29 +349,58 @@ def hyperparameter_tuning(Model, folds, seed, device):
         trial.report(avg_val_loss, 0)
         return avg_val_loss
 
+    # Start timer for the entire tuning process
+    total_start_time = time.time()
+    
+    # Start timer for the first trial
+    trial_start_time = time.time()
+    
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=3, n_jobs=1)
+    study.optimize(objective, n_trials=5, n_jobs=1, callbacks=[callback])
+    
+    # Calculate total time for tuning
+    total_tuning_time = time.time() - total_start_time
 
-    print("Best trial parameters:")
+    # Output results
+    print("\nSummary of trial times:")
+    for trial_num, trial_time in trial_times.items():
+        print(f"Trial {trial_num}: {trial_time:.2f} seconds")
+    
+    if len(trial_times) > 0:
+        avg_time = sum(trial_times.values()) / len(trial_times)
+        print(f"Average trial time: {avg_time:.2f} seconds")
+    
+    print(f"Total hyperparameter tuning time: {total_tuning_time:.2f} seconds ({total_tuning_time/60:.2f} minutes)")
+
+    print("\nBest trial parameters:")
     for key, value in study.best_trial.params.items():
         print(f"{key}: {value}")
 
     best_hp = study.best_trial.params
     return study, best_hp
 
-def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, final = False):
 
+def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, final=False):
+    import time
+    
     set_seed(seed, device)
+
+    # Start time measurement for final training
+    if final:
+        start_time = time.time()
+        print(f"Starting final training with {num_epochs} epochs and patience {patience}...")
 
     best_val_loss = float('inf')
     early_stopping_counter = 0
 
     train_loss_history = []
     val_loss_history = []
+    best_model = None
 
     for epoch in range(num_epochs):
+        # Training phase
         model.train()
         train_loss = 0.0
         for X_batch, y_batch in train_loader:
@@ -372,7 +414,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         train_loss /= len(train_loader)
         train_loss_history.append(train_loss)
 
-        # Validation
+        # Validation phase
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -392,14 +434,22 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stopping_counter = 0
-            best_model = model
+            best_model = model.state_dict().copy()  # Make a copy of the model state
         else:
             early_stopping_counter += 1
             if early_stopping_counter >= patience:
+                if final:
+                    print(f"Early stopping triggered after epoch {epoch+1}")
                 break
     
+    # Load the best model state before returning
+    if best_model is not None and final:
+        model.load_state_dict(best_model)
+    
     if final:
-        return best_model, train_loss_history, val_loss_history
+        training_time = time.time() - start_time
+        print(f'Final training completed in {training_time:.2f} seconds ({training_time/60:.2f} minutes)')
+        return model, train_loss_history, val_loss_history
     else:
         return best_val_loss
 
@@ -473,7 +523,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             # Modellevaluation
             _, y_test_seq = initial_split_sequenced[0]["test"]
-            predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device = torch.device("cpu"))
+            predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device =device)
             #y_test_inv = scaler_y.inverse_transform(y_test_seq.reshape(-1,1))
             #predictions_inv = scaler_y.inverse_transform(predictions)
 
@@ -491,6 +541,8 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
 #testweise Ausführung 
 
+
+"""
 with open("data/df_final_eng.pkl", "rb") as f:
         df_final = pickle.load(f)
 
@@ -499,3 +551,5 @@ y = np.array(df_final['price actual']).reshape(-1,1)
 
 results = cross_validate_time_series([SimpleRNN, LSTMModel], [42, 81], X, y,torch.device("cpu"))
 print(results)
+
+"""

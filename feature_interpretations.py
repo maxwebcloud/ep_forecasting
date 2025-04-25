@@ -7,7 +7,10 @@ import pickle
 import shap
 import torch
 
-pca = joblib.load("data/pca.pkl")
+#vorrübergehend
+from sklearn.decomposition import PCA
+from cv_right import fit_minmax_scalers, get_time_series_split_indices
+
 
 with open("data/df_final_eng.pkl", "rb") as f:
     df_final = pickle.load(f)
@@ -91,3 +94,88 @@ def plot_top_shap_features(shapValues, featureNames, topPercent=0.3):
     plt.title(f"Top {int(topPercent*100)}% wichtigste Features")
     plt.tight_layout()
     plt.show()
+
+
+def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
+    """
+    Skaliert und transformiert die Daten in jedem Fold:
+    - Skaliert X und y separat per MinMaxScaler
+    - Führt PCA auf X durch (trainiert auf X_train)
+    - Hängt y als zusätzliches Feature an die PCA-Komponenten
+
+    Args:
+        folds (list of dicts): Fold-Daten mit train/val(/test)
+        variance_ratio (float): Beibehaltener Varianzanteil für PCA
+
+    Returns:
+        list of dicts: Preprozessierte Folds
+    """
+    processed_folds = []
+    pcas, scalers_X, scalers_y = [], [], []
+        
+
+    for fold in folds:
+        # Daten extrahieren
+        X_train, y_train = fold["train"]
+        X_val, y_val = fold["val"]
+        X_test, y_test = fold.get("test", (None, None))  # optional
+
+        # Skalierung
+        scaler_X, scaler_y = fit_minmax_scalers(X_train, y_train)
+        X_train = scaler_X.transform(X_train)
+        y_train = scaler_y.transform(y_train) 
+        X_val = scaler_X.transform(X_val)
+        y_val = scaler_y.transform(y_val)
+        if X_test is not None:
+            X_test = scaler_X.transform(X_test)
+            y_test = scaler_y.transform(y_test)
+
+        # PCA
+        pca = PCA(n_components= variance_ratio)
+        pca.fit(X_train)
+        X_train = pca.transform(X_train)
+        X_val = pca.transform(X_val)
+        if X_test is not None:
+            X_test = pca.transform(X_test)
+   
+
+        # y als Feature anhängen
+        X_train = np.concatenate((X_train, y_train), axis=1)
+        X_val = np.concatenate((X_val, y_val), axis=1)
+        if X_test is not None:
+            X_test = np.concatenate((X_test, y_test), axis=1)
+
+        processed_fold = {
+            "train": (X_train, y_train),
+            "val": (X_val, y_val)
+        }
+        if X_test is not None:
+            processed_fold["test"] = (X_test, y_test)
+
+        processed_folds.append(processed_fold)
+
+        if return_pca_scaler:
+            pcas.append(pca)
+            scalers_X.append(scaler_X)
+            scalers_y.append(scaler_y)
+
+    if return_pca_scaler:
+        return processed_folds, pcas, scalers_X, scalers_y
+    else:
+        return processed_folds
+    
+
+    """
+    1.) Funktion zur PCA Loadings/Wichtigkeit mit einem Aufruf
+    dann daten importieren
+    in X und y teilen
+
+    funktion aufrufen und übergeben: dataframe 
+    X, y und featurenames extrahieren
+    daten splitten und preprocessing 
+    dann plot_top_pca:loadings
+
+
+    2.) funktion zur Feature Interpretation mit einem Aufruf
+
+    """

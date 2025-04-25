@@ -378,16 +378,16 @@ def final_model_training(X_train, best_hp, Model, train_dataset, val_dataset, te
     return train_loss_history, val_loss_history 
 
 
-def train_history_plot(train_loss_history, val_loss_history, modelName, SEED):
+def train_history_plot(train_loss_history, val_loss_history, model, SEED):
     plt.figure(figsize=(8, 5))
     plt.plot(train_loss_history, label="Train Loss")
     plt.plot(val_loss_history, label="Val Loss")
     plt.xlabel("Epochen")
     plt.ylabel("Loss")
     plt.legend()
-    plt.title(f"Trainings- and Validation Loss {modelName.upper()} ({SEED})")
+    plt.title(f"Trainings- and Validation Loss {model.name.upper()} ({SEED})")
     
-    filename = f"{modelName}_train_history_{SEED}.png"
+    filename = f"{model.name}_train_history_{SEED}.png"
     filepath = os.path.join("plots", filename)
 
     # Speichern & schließen

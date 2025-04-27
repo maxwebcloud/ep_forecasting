@@ -315,6 +315,7 @@ def save_best_hp(model, study, SEED):
 def load_best_hp(model, SEED):
     with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "r") as f:
         best_hp = json.load(f)
+    return best_hp
 
 
 # Bestes Modell mit den gefundenen Hyperparametern trainieren
@@ -398,7 +399,7 @@ def train_history_plot(train_loss_history, val_loss_history, model, SEED):
 # load trained model  
 def load_model(model, input_size, seed, device):
     hp = load_best_hp(model, seed)
-    model_final = Model(input_size=input_size, hp=hp).to(device)
+    model_final = model(input_size=input_size, hp=hp).to(device)
     model_final.load_state_dict(torch.load(f"saved_models/{model.name}_model_final_{seed}.pth", map_location=device, weights_only=True))
     model_final.eval()
     return model_final

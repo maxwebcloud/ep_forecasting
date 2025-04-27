@@ -6,16 +6,16 @@ import joblib
 import pickle
 import shap
 import torch
+import os
 
 #vorrübergehend
 from sklearn.decomposition import PCA
-from cv_right import fit_minmax_scalers, get_time_series_split_indices
+from cv_right import fit_minmax_scalers, get_time_series_split_indices, create_sequences_for_folds
+from workflowfunctions_utils import load_model
+from models_utils import LSTMModel
 
 
-with open("data/df_final_eng.pkl", "rb") as f:
-    df_final = pickle.load(f)
 
-featureNames = df_final[df_final.columns.drop('price actual')].columns
 
 #Heatmap für PCA Loadings-----------------------------------------------------------------------------
 def plot_top_pca_loadings(pca, feature_names, top_percent=0.3):
@@ -43,7 +43,43 @@ def plot_top_pca_loadings(pca, feature_names, top_percent=0.3):
     plt.xlabel('Principal Components')
     plt.ylabel('Features')
     plt.tight_layout()
-    plt.show()
+    filename = f"top_{top_percent *100}%_loadings.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+
+
+
+def plot_cumulative_explained_variance(pca, threshold_lines=[0.8, 0.9]):
+    """
+    Plottet die kumulierte erklärte Varianz der PCA-Komponenten.
+
+    Args:
+        pca (sklearn.decomposition.PCA): Ein trainiertes PCA-Objekt.
+        threshold_lines (list): Optionale horizontale Linien (z. B. 0.8 für 80 %).
+    """
+    cum_var = np.cumsum(pca.explained_variance_ratio_)
+    num_components = np.arange(1, len(cum_var) + 1)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(num_components, cum_var, marker='o', label='Kumulative Varianz')
+    for thresh in threshold_lines:
+        plt.axhline(y=thresh, color='r', linestyle='--', label=f'{int(thresh*100)}% Schwelle')
+    plt.xlabel('Anzahl Komponenten')
+    plt.ylabel('Kumulative erklärte Varianz')
+    plt.title('Kumulative erklärte Varianz der PCA')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    filename = f"cumulative_explained_variance_pca.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+
 
 #Features Interpretation ------------------------------------------------------------------------
 
@@ -63,15 +99,16 @@ def get_shap_feature_importance(finalModel, inputSample, pca, seqLen = 24, input
     explainer = shap.KernelExplainer(model_fn, inputFlat)
     shapValues = explainer.shap_values(inputFlat, n_samples = 100)
     # Rückprojektion auf Originalfeatures (ungefähr)
+    num_pca_components = pca.components_.shape[0]
     shapPcaSeq = np.array(shapValues).reshape(inputSample.shape)
-    shapPcaOnly = shapPcaSeq[:, :, :16]  # SHAP-Werte für PCA-Komponenten
-    shapTargetFeature = shapPcaSeq[:, :, 16]  # SHAP-Werte für den Preis direkt
+    shapPcaOnly = shapPcaSeq[:, :, :num_pca_components]  # SHAP-Werte für PCA-Komponenten
+    shapTargetFeature = shapPcaSeq[:, :, num_pca_components]  # SHAP-Werte für den Preis direkt
     shapPcaOrig = np.matmul(shapPcaOnly, pca.components_)
     shapCombined = np.concatenate([shapPcaOrig, shapTargetFeature[..., np.newaxis]], axis=-1)
 
     return shapCombined
 
-def plot_top_shap_features(shapValues, featureNames, topPercent=0.3):
+def plot_top_shap_features(shapValues, featureNames, model, seed, topPercent=0.3):
     # Mittlerer absolute SHAP-Werte pro Feature
     meanAbsShap = np.mean(np.abs(shapValues), axis=(0, 1))
     
@@ -93,7 +130,14 @@ def plot_top_shap_features(shapValues, featureNames, topPercent=0.3):
     plt.xlabel("Anteil an totaler SHAP-Wichtigkeit (%)")
     plt.title(f"Top {int(topPercent*100)}% wichtigste Features")
     plt.tight_layout()
-    plt.show()
+
+    filename = f"shap_feature_importance_{model.name}_{seed}.png"
+    filepath = os.path.join("plots", filename)
+
+    # Speichern & schließen
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
+
 
 
 def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
@@ -179,3 +223,66 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     2.) funktion zur Feature Interpretation mit einem Aufruf
 
     """
+
+def plot_pca_information(df_final, train_frac, val_frac, test_frac,variance_ratio, top_pca_percentage):
+
+    # Daten aufteilen in PCA-Features und Target
+    X = df_final[df_final.columns.drop('price actual')].values
+    y = np.array(df_final['price actual']).reshape(-1,1)
+    feature_names = df_final[df_final.columns.drop('price actual')].columns
+    
+    # Features splitten 
+    splits = get_time_series_split_indices(len(X), train_frac, val_frac, test_frac)
+    initial_split = [{
+    "train": (X[splits["train_idx"][0] : splits["train_idx"][1]], y[splits["train_idx"][0] : splits["train_idx"][1]]),
+    "val": (X[splits["val_idx"][0] : splits["val_idx"][1]], y[splits["val_idx"][0] : splits["val_idx"][1]]),
+    "test": (X[splits["test_idx"][0] : splits["test_idx"][1]], y[splits["test_idx"][0] : splits["test_idx"][1]])
+    }]
+
+    # Plot der kummulierten erkläreten Varianz über die PCs hinweg
+    initial_split_preprocessed, pcas, scalers_X, scalers_y = preprocessing(initial_split, variance_ratio = None, return_pca_scaler= True)
+    plot_cumulative_explained_variance(pcas[0])
+
+    # Top x% der Features die (im Mittel) am stärksten zu den zu PCs beitragen 
+    initial_split_preprocessed, pcas, scalers_X, scalers_y = preprocessing(initial_split, variance_ratio, return_pca_scaler= True)
+    plot_top_pca_loadings(pcas[0], feature_names, top_pca_percentage)
+
+    
+def plot_feature_importance_with_shap(model, df_final, train_frac, val_frac, test_frac,variance_ratio, sequence_length, step_size, seed, top_percent, device):
+    # Daten aufteilen in PCA-Features und Target
+    X = df_final[df_final.columns.drop('price actual')].values
+    y = np.array(df_final['price actual']).reshape(-1,1)
+    feature_names = df_final.columns.drop('price actual').tolist()
+    feature_names.append('price actual')
+    
+    # Features splitten 
+    splits = get_time_series_split_indices(len(X), train_frac, val_frac, test_frac)
+    initial_split = [{
+    "train": (X[splits["train_idx"][0] : splits["train_idx"][1]], y[splits["train_idx"][0] : splits["train_idx"][1]]),
+    "val": (X[splits["val_idx"][0] : splits["val_idx"][1]], y[splits["val_idx"][0] : splits["val_idx"][1]]),
+    "test": (X[splits["test_idx"][0] : splits["test_idx"][1]], y[splits["test_idx"][0] : splits["test_idx"][1]])
+    }]
+
+    # Preprocessing und Sequenzen erzeugen
+    initial_split_preprocessed, pcas, _, _  = preprocessing(initial_split, variance_ratio, return_pca_scaler= True)
+    initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=True)
+    X_train_seq, _ = initial_split_sequenced[0]["train"]
+    amount_features = X_train_seq.shape[2]
+
+    # Modell laden
+    model = load_model(model, amount_features, seed, device)
+
+    # Shap-Values erzeugen
+    X_sample = initial_split_sequenced[0]['val'][0][:100]
+    shapValues = get_shap_feature_importance(model, X_sample, pcas[0], seqLen = sequence_length, inputDim = amount_features)
+    plot_top_shap_features(shapValues, feature_names, model, seed, top_percent)
+
+
+
+# Testweise Ausführung
+
+with open("data/df_final_eng.pkl", "rb") as f:
+    df_final = pickle.load(f)
+
+#plot_pca_information(df_final, train_frac = 0.6, val_frac= 0.2, test_frac= 0.2, variance_ratio = 0.8, top_pca_percentage= 0.3)
+plot_feature_importance_with_shap(LSTMModel, df_final, train_frac = 0.6, val_frac= 0.2, test_frac = 0.2,variance_ratio = 0.8, sequence_length = 24, step_size = 1, seed = 42, top_percent =0.3, device= torch.device("cpu"))

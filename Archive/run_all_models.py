@@ -48,7 +48,7 @@ from pathlib import Path              # ➊ neu
 from datetime import datetime         # ➋ neu
 
 from models_utils import *
-from models_main import generate_evaluate_models
+from Archive.models_main import generate_evaluate_models
 
 # ---------------------------------------------------------------------------
 # Konfiguration (unverändert)

@@ -12,7 +12,7 @@ import optuna
 from optuna.pruners import HyperbandPruner
 from rich import print
 from rich.console import Console
-from workflowfunctions_utils_gpu import set_seed, get_predictions_in_batches, get_device, save_best_hp, train_history_plot
+from workflowfunctions_utils import set_seed, get_predictions_in_batches, get_device, save_best_hp, train_history_plot
 from models_utils import *
 
 
@@ -338,11 +338,11 @@ def hyperparameter_tuning(Model, folds, seed, device):
             train_loader, val_loader, _ = get_dataloaders(seed, train_dataset, val_dataset)
      
             model = Model(input_size= num_features, hp=hp).to(device)
-            model = torch.compile(model)
+            #model = torch.compile(model)
             criterion = nn.MSELoss().to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
 
-            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs = 15, patience = 7, seed = seed)
+            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs = 15, patience = 10, seed = seed)
             val_losses.append(best_val_loss)
 
         avg_val_loss = np.mean(val_losses)
@@ -356,9 +356,9 @@ def hyperparameter_tuning(Model, folds, seed, device):
     trial_start_time = time.time()
     
     sampler = optuna.samplers.TPESampler(seed=seed)
-    pruner = optuna.pruners.HyperbandPruner(min_resource=3, max_resource=15, reduction_factor=3)
+    pruner = optuna.pruners.HyperbandPruner(min_resource=5, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=5, n_jobs=1, callbacks=[callback])
+    study.optimize(objective, n_trials=5, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
     
     # Calculate total time for tuning
     total_tuning_time = time.time() - total_start_time
@@ -443,6 +443,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
                 break
     
     # Load the best model state before returning
+
     if best_model is not None and final:
         model.load_state_dict(best_model)
     
@@ -456,7 +457,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
 def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val_size=0.2, test_size=0.2, 
                                sequence_length=24, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
     
-    console = Console()
+    console = Console() 
 
     # Splitten der Daten in Trainings-, Val- und Testset
     n = len(X)  

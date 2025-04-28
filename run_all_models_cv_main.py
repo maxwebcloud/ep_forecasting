@@ -35,10 +35,10 @@ Available CLI options:
 Examples:
 ---------
 Run LSTM on MPS:
-    python run_all_models_cv.py --mode lstm --device mps
+    python run_all_models_cv_main.py --mode lstm --device mps
 
 Run all models on CPU:
-    python run_all_models_cv.py --mode standard --device cpu
+    python run_all_models_cv_main.py --mode standard --device cpu
 """
 
 # ============================================================================
@@ -58,7 +58,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from models_utils import *
-from workflowfunctions_utils_gpu import get_device
+from workflowfunctions_utils import get_device
 from cv_right import cross_validate_time_series
 
 # ============================================================================
@@ -113,25 +113,99 @@ selected_models = MODELS[mode]
 # Seed Initialization
 # ============================================================================
 SEED = 42
-N_SEEDS = 1
+N_SEEDS = 5
 random.seed(SEED)
 np.random.seed(SEED)
 seeds_list = random.sample(range(0, 100), N_SEEDS)
 
-
 # ============================================================================
 # Startup Information
 # ============================================================================
-print("\n=== Starting run_all_models_cv.py ===")
-print(f"Device selected: {device_choice}")
-print(f"Model group: {mode}")
-print("Selected models to run:")
-for model in selected_models:
-    print(f"  - {model.__name__}")
+def print_settings():
+    """Combined output of basic and advanced settings"""
+    import inspect
+    import cv_right
+    import re
+    
+    print("\n=== Starting run_all_models_cv.py ===")
+    print(f"Device selected: {device_choice}")
+    print(f"Model group: {mode}")
+    
+    print("\nSelected models to run:")
+    for model in selected_models:
+        print(f"  - {model.__name__}")
+    
+    print("\n" + "="*50)
+    print("Settings for: CV, Tuning, Training")
+    print("="*50)
+    
+    # CV-Settings (from CV_PARAMS)
+    print("\nCV Settings")
+    print(f"  Number of folds:      {CV_PARAMS['n_folds']}")
+    print(f"  Train/Val/Test split: {CV_PARAMS['train_size']:.1f}/{CV_PARAMS['val_size']:.1f}/{CV_PARAMS['test_size']:.1f}")
+    print(f"  Sequence length:      {CV_PARAMS['sequence_length']}")
+    print(f"  Step size:            {CV_PARAMS['step_size']}")
+    print(f"  Variance ratio (PCA): {CV_PARAMS['variance_ratio']:.1f}")
+    print(f"  Single step forecast: {CV_PARAMS['single_step']}")
+    
+    # Dynamic settings from cv_right.py
+    try:
+        # Extract values from cv_right.py functions
+        batch_size_source = inspect.getsource(cv_right.get_dataloaders) 
+        hyperparameter_tuning_source = inspect.getsource(cv_right.hyperparameter_tuning)
+        cv_time_series_source = inspect.getsource(cv_right.cross_validate_time_series)
+        
+        # Batch size settings
+        batch_size_match = re.search(r'batch_size\s*=\s*(\d+)', batch_size_source)
+        batch_size = int(batch_size_match.group(1)) if batch_size_match else "N/A"
+        
+        # Pruner settings
+        pruner_match = re.search(r'pruner\s*=\s*optuna\.pruners\.HyperbandPruner\s*\(\s*min_resource\s*=\s*(\d+)\s*,\s*max_resource\s*=\s*(\d+)\s*,\s*reduction_factor\s*=\s*(\d+)', hyperparameter_tuning_source)
+        min_resource = int(pruner_match.group(1)) if pruner_match else "N/A"
+        max_resource = int(pruner_match.group(2)) if pruner_match else "N/A"
+        reduction_factor = int(pruner_match.group(3)) if pruner_match else "N/A"
+        
+        # n_trials
+        n_trials_match = re.search(r'n_trials\s*=\s*(\d+)', hyperparameter_tuning_source)
+        n_trials = int(n_trials_match.group(1)) if n_trials_match else "N/A"
+        
+        # Tuning model_train settings
+        hp_epochs_match = re.search(r'model_train\(.*?num_epochs\s*=\s*(\d+)\s*,\s*patience\s*=\s*(\d+)', hyperparameter_tuning_source, re.DOTALL)
+        hp_epochs = int(hp_epochs_match.group(1)) if hp_epochs_match else "N/A"
+        hp_patience = int(hp_epochs_match.group(2)) if hp_epochs_match else "N/A"
+        
+        # Final training settings
+        final_epochs_match = re.search(r'model_train\(.*?num_epochs\s*=\s*(\d+)\s*,\s*patience\s*=\s*(\d+).*?final\s*=\s*True', cv_time_series_source, re.DOTALL)
+        final_epochs = int(final_epochs_match.group(1)) if final_epochs_match else "N/A"
+        final_patience = int(final_epochs_match.group(2)) if final_epochs_match else "N/A"
 
-print("\nCross-validation settings:")
-for key, value in CV_PARAMS.items():
-    print(f"  {key}: {value}")
+
+        # Hyperparameter Tuning Settings
+        print("\nHyperparameter Tuning")
+        print(f"  Number of trials:         {n_trials}")
+        print(f"  Pruner min resources:     {min_resource}")
+        print(f"  Pruner max resources:     {max_resource}")
+        print(f"  Pruner reduction factor:  {reduction_factor}")
+        print(f"  Training epochs:          {hp_epochs}")
+        print(f"  Early stopping patience:  {hp_patience}")
+        
+        # Final Model Training
+        print("\nFinal Model Training")
+        print(f"  Training epochs:          {final_epochs}")
+        print(f"  Early stopping patience:  {final_patience}")
+
+
+        # Selected Batch size Settings
+        print("\nSelected Batch size Settings")
+        print(f"  Batch Size:               {batch_size}")
+    except Exception as e:
+        print(f"\n[Warning] Could not extract advanced settings: {str(e)}")
+    
+    print("\n" + "="*50)
+
+# Output all settings
+print_settings()
+
 
 # ============================================================================
 # Data Loading
@@ -144,22 +218,23 @@ X = df_final[df_final.columns.drop('price actual')].values
 y = df_final['price actual'].values.reshape(-1, 1)
 
 # ============================================================================
-# Device Setup - Do this only once before the loop
+# Device Setup 
 # ============================================================================
 use_gpu = device_choice == "mps"
 device = get_device(use_gpu=use_gpu)
-print(f"Using device: {device}")
 
 # ============================================================================
 # Model Training & Cross-Validation
 # ============================================================================
+model_runtimes = {}          # model_name  ->  minutes
 start_time = time.time()
 results = []
 
 for model_class in selected_models:
     model_name = getattr(model_class, "name", model_class.__name__)
+    model_start = time.perf_counter() 
     
-    # Make sure MPS memory is cleared before each model if using MPS
+    # MPS memory is cleared before each model if using MPS
     if device.type == "mps":
         # Force garbage collection to free up memory
         import gc
@@ -184,6 +259,10 @@ for model_class in selected_models:
         single_step=CV_PARAMS["single_step"]
     )
 
+    model_end = time.perf_counter()       
+    model_runtimes[model_name] = (model_end - model_start) / 60  
+
+
     # Handle the results which might be a DataFrame
     if isinstance(model_results, pd.DataFrame):
         results.extend(model_results.to_dict('records'))
@@ -194,28 +273,54 @@ for model_class in selected_models:
 # Evaluation Summary
 # ============================================================================
 end_time = time.time()
-total_runtime = (end_time - start_time) / 60
+total_minutes = (end_time - start_time) / 60          # total runtime in minutes
+total_hours   = total_minutes / 60                    # and in hours
 
 summary_lines = ["\n=== RMSE Summary (Cross-Validation) ==="]
 
+# ---------------------------------
+# Collect results by model & seed
+# ---------------------------------
 processed_results = {}
 for result in results:
-    name = result["model"]
-    seed = result["seed"]
-    rmse = result["rmse"]
+    name  = result["model"]
+    seed  = result["seed"]
+    rmse  = result["rmse"]
     processed_results.setdefault(name, []).append((seed, rmse))
 
-avg_runtime = total_runtime / len(selected_models) if selected_models else 0
-
+# ---------------------------------
+# Print section per model
+# ---------------------------------
 for model_name, results_list in processed_results.items():
     rmses = [rmse for _, rmse in results_list]
+
     summary_lines.append(f"\nModel: {model_name}")
     summary_lines.append(f"  Device: {device_choice}")
-    for seed, rmse in results_list:
-        summary_lines.append(f"  Seed {seed}: RMSE = {rmse:.4f}")
-    summary_lines.append(f"  Average RMSE: {np.mean(rmses):.4f}")
-    summary_lines.append(f"  Runtime: {avg_runtime:.2f} minutes")
 
+    # individual seeds
+    for seed, rmse in results_list:
+        summary_lines.append(f"  Seed {seed}: OOS-RMSE = {rmse:.4f}")
+
+    summary_lines.append(f"  Runtime: {model_runtimes[model_name]:.2f} min")
+
+    # Mean RMSE across all seeds
+    summary_lines.append(
+        f"\033[92m  Mean Out-of-Sample Performance (RMSE) across "
+        f"{len(rmses)} seeds: {np.mean(rmses):.4f}\033[0m"
+    )
+    
+
+# ---------------------------------
+# Overall runtime
+# ---------------------------------
+summary_lines.append(
+    f"\nTotal runtime (all models & seeds): "
+    f"{total_minutes:.2f} min  |  {total_hours:.2f} h"
+)
+
+# ---------------------------------
+# Join to single string
+# ---------------------------------
 summary_text = "\n".join(summary_lines)
 
 # ============================================================================

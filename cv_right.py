@@ -121,7 +121,7 @@ def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
 
     return scaler_X, scaler_y
 
-def preprocessing(folds, variance_ratio=0.8):
+def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     """
     Skaliert und transformiert die Daten in jedem Fold:
     - Skaliert X und y separat per MinMaxScaler
@@ -136,6 +136,8 @@ def preprocessing(folds, variance_ratio=0.8):
         list of dicts: Preprozessierte Folds
     """
     processed_folds = []
+    pcas, scalers_X, scalers_y = [], [], []
+        
 
     for fold in folds:
         # Daten extrahieren
@@ -160,6 +162,7 @@ def preprocessing(folds, variance_ratio=0.8):
         X_val = pca.transform(X_val)
         if X_test is not None:
             X_test = pca.transform(X_test)
+   
 
         # y als Feature anhängen
         X_train = np.concatenate((X_train, y_train), axis=1)
@@ -176,7 +179,15 @@ def preprocessing(folds, variance_ratio=0.8):
 
         processed_folds.append(processed_fold)
 
-    return processed_folds
+        if return_pca_scaler:
+            pcas.append(pca)
+            scalers_X.append(scaler_X)
+            scalers_y.append(scaler_y)
+
+    if return_pca_scaler:
+        return processed_folds, pcas, scalers_X, scalers_y
+    else:
+        return processed_folds
 
 
 def create_sequences_for_folds(folds, history_size, target_size, step=1, single_step=False):
@@ -434,23 +445,19 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stopping_counter = 0
-            best_model = model.state_dict().copy()  # Make a copy of the model state
+            best_model = model
         else:
             early_stopping_counter += 1
             if early_stopping_counter >= patience:
                 if final:
                     print(f"Early stopping triggered after epoch {epoch+1}")
                 break
-    
-    # Load the best model state before returning
 
-    if best_model is not None and final:
-        model.load_state_dict(best_model)
     
     if final:
         training_time = time.time() - start_time
         print(f'Final training completed in {training_time:.2f} seconds ({training_time/60:.2f} minutes)')
-        return model, train_loss_history, val_loss_history
+        return best_model, train_loss_history, val_loss_history
     else:
         return best_val_loss
 
@@ -484,7 +491,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
 
     # Initialer Split Skalieren + Komprimieren
-    initial_split_preprocessed = preprocessing(initial_split, variance_ratio)
+    initial_split_preprocessed, _, _, scalers_y = preprocessing(initial_split, variance_ratio, return_pca_scaler = True)
 
     # Initialen Split in Sequenzen schneiden + in Tensordatasets wandeln
     initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=single_step)
@@ -503,7 +510,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             save_best_hp(model, study, seed)
 
 
-            # Finales Modelltraining
+             # Finales Modelltraining
             console.print("\n[bold turquoise2]Final Training[/bold turquoise2]")
             X_train_seq, _ = initial_split_sequenced[0]["train"]
             amount_features = X_train_seq.shape[2]
@@ -524,20 +531,28 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
 
             # Modellevaluation
             _, y_test_seq = initial_split_sequenced[0]["test"]
+            y_test_seq = y_test_seq.reshape(-1,1)
             predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device =device)
-            #y_test_inv = scaler_y.inverse_transform(y_test_seq.reshape(-1,1))
-            #predictions_inv = scaler_y.inverse_transform(predictions)
+            y_test_seq_rescaled = scalers_y[0].inverse_transform(y_test_seq)
+            predictions_rescaled = scalers_y[0].inverse_transform(predictions)
 
-            rmse = np.sqrt(np.mean((predictions - y_test_seq.reshape(-1,1))**2))
-            console.print(f"[bold turquoise2]Out of Sample Performance: {rmse}[/bold turquoise2]")
+            mse_scaled = np.mean((predictions - y_test_seq)**2)
+            rmse_scaled = np.sqrt(mse_scaled)
+            mse_orig = np.mean((predictions_rescaled - y_test_seq_rescaled)**2)
+            rmse_orig = np.sqrt(mse_orig)
+
+            console.print(f"[bold turquoise2]Out of Sample Performance: {rmse_scaled}[/bold turquoise2]")
             final_results.append({
             "model": model.name,
             "seed": seed,
-            "rmse": rmse
+            "rmse_scaled": rmse_scaled,
+            "mse_scaled": mse_scaled,
+            "rmse_orig": rmse_orig,
+            "mse_orig": mse_orig
             })
     
-    final_rmse_df = pd.DataFrame(final_results)
-    return final_rmse_df
+    final_eval_df = pd.DataFrame(final_results)
+    return final_eval_df
 
 
 #testweise Ausführung 

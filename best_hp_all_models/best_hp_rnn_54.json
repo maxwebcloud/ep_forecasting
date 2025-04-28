@@ -1,1 +1,0 @@
-{"rnn_units": 128, "dropout_rate_rnn": 0.2, "dense_units": 16, "dropout_rate_dense": 0.2, "learning_rate": 0.001}

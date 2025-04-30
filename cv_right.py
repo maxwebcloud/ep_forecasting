@@ -339,25 +339,40 @@ def hyperparameter_tuning(Model, folds, seed, device):
         val_losses = []
         hp = Model.suggest_hyperparameters(trial)
 
+        global_step = 0
+        num_epochs  = 15          
+
         for fold_id, fold in enumerate(folds):
             set_seed(seed, device)
 
-            train_dataset = fold["train"]
-            val_dataset = fold["val"]
-            num_features = train_dataset.tensors[0].shape[-1]
+            train_ds = fold["train"]
+            val_ds   = fold["val"]
+            num_feat = train_ds.tensors[0].shape[-1]
 
-            train_loader, val_loader, _ = get_dataloaders(seed, train_dataset, val_dataset)
-    
-            model = Model(input_size= num_features, hp=hp).to(device)
+            train_loader, val_loader, _ = get_dataloaders(
+                seed, train_ds, val_ds)
+
+            model = Model(input_size=num_feat, hp=hp).to(device)
             criterion = nn.MSELoss().to(device)
-            optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
+            optimizer = torch.optim.Adam(model.parameters(),
+                                        lr=hp["learning_rate"])
 
-            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, 
-                                    device, num_epochs=15, patience=10, seed=seed, trial=trial)
+            best_val_loss = model_train(
+                model, criterion, optimizer,
+                val_loader, train_loader,
+                device,
+                num_epochs=num_epochs,
+                patience=10,
+                seed=seed,
+                trial=trial,
+                step_offset=global_step   
+            )
+
             val_losses.append(best_val_loss)
 
-        avg_val_loss = np.mean(val_losses)
-        return avg_val_loss
+            global_step += num_epochs       
+
+        return np.mean(val_losses)
     
     # Start timer for the entire tuning process
     total_start_time = time.time()
@@ -368,7 +383,7 @@ def hyperparameter_tuning(Model, folds, seed, device):
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.HyperbandPruner(min_resource=5, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=1, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
+    study.optimize(objective, n_trials=3, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
     
     # Calculate total time for tuning
     total_tuning_time = time.time() - total_start_time
@@ -392,7 +407,7 @@ def hyperparameter_tuning(Model, folds, seed, device):
     return study, best_hp
 
 
-def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, trial=None, final=False):
+def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, trial=None, final=False, step_offset=0):
     import time
     
     set_seed(seed, device)
@@ -454,7 +469,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         
         #Pruning-Report auf Epochen-Ebene (wenn trial übergeben wurde)
         if trial is not None:
-            trial.report(val_loss, epoch)
+            trial.report(val_loss, step_offset + epoch)
             if trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
 

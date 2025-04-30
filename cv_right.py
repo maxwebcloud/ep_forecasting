@@ -347,19 +347,18 @@ def hyperparameter_tuning(Model, folds, seed, device):
             num_features = train_dataset.tensors[0].shape[-1]
 
             train_loader, val_loader, _ = get_dataloaders(seed, train_dataset, val_dataset)
-     
+    
             model = Model(input_size= num_features, hp=hp).to(device)
-            #model = torch.compile(model)
             criterion = nn.MSELoss().to(device)
             optimizer = torch.optim.Adam(model.parameters(), lr=hp['learning_rate'])
 
-            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs = 15, patience = 10, seed = seed)
+            best_val_loss = model_train(model, criterion, optimizer, val_loader, train_loader, 
+                                    device, num_epochs=15, patience=10, seed=seed, trial=trial)
             val_losses.append(best_val_loss)
 
         avg_val_loss = np.mean(val_losses)
-        trial.report(avg_val_loss, 0)
         return avg_val_loss
-
+    
     # Start timer for the entire tuning process
     total_start_time = time.time()
     
@@ -369,7 +368,7 @@ def hyperparameter_tuning(Model, folds, seed, device):
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.HyperbandPruner(min_resource=5, max_resource=15, reduction_factor=3)
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=5, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
+    study.optimize(objective, n_trials=1, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
     
     # Calculate total time for tuning
     total_tuning_time = time.time() - total_start_time
@@ -393,7 +392,7 @@ def hyperparameter_tuning(Model, folds, seed, device):
     return study, best_hp
 
 
-def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, final=False):
+def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, trial=None, final=False):
     import time
     
     set_seed(seed, device)
@@ -452,8 +451,13 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
                 if final:
                     print(f"Early stopping triggered after epoch {epoch+1}")
                 break
+        
+        #Pruning-Report auf Epochen-Ebene (wenn trial übergeben wurde)
+        if trial is not None:
+            trial.report(val_loss, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
 
-    
     if final:
         training_time = time.time() - start_time
         print(f'Final training completed in {training_time:.2f} seconds ({training_time/60:.2f} minutes)')
@@ -545,6 +549,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             final_results.append({
             "model": model.name,
             "seed": seed,
+            "rmse":  rmse_orig, 
             "rmse_scaled": rmse_scaled,
             "mse_scaled": mse_scaled,
             "rmse_orig": rmse_orig,

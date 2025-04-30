@@ -190,7 +190,7 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
         return processed_folds
 
 
-def create_sequences_for_folds(folds, history_size, target_size, step=1, single_step=False):
+def create_sequences_for_folds(folds, history_size, target_size, step, single_step):
     """
     Erstellt Sequenzen aus jedem Fold für train/val und optional test.
 
@@ -221,7 +221,7 @@ def create_sequences_for_folds(folds, history_size, target_size, step=1, single_
     return sequenced_folds
 
 
-def create_sequences(X, y, history_size, target_size, step=1, single_step=False):
+def create_sequences(X, y, history_size, target_size, step, single_step):
     """
     Erstellt Sequenzen aus gegebenen Features (X) und Zielwerten (y).
 
@@ -466,7 +466,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         return best_val_loss
 
 def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val_size=0.2, test_size=0.2, 
-                               sequence_length=24, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
+                               sequence_length=24, target_size = 0, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
     
     console = Console() 
 
@@ -490,7 +490,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     folds_preprocessed = preprocessing(folds, variance_ratio)
 
     # Folds in Sequenzen schneiden + in Tensordtasets wandeln
-    folds_sequenced = create_sequences_for_folds(folds_preprocessed, sequence_length, step_size, step=1, single_step=single_step)
+    folds_sequenced = create_sequences_for_folds(folds_preprocessed, sequence_length, target_size, step_size, single_step)
     folds_tensordatasets = get_tensordatasets_from_folds(folds_sequenced)
 
 
@@ -498,7 +498,7 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     initial_split_preprocessed, _, _, scalers_y = preprocessing(initial_split, variance_ratio, return_pca_scaler = True)
 
     # Initialen Split in Sequenzen schneiden + in Tensordatasets wandeln
-    initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, step_size, step=1, single_step=single_step)
+    initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, target_size, step_size, single_step)
     initial_split_tensordatasets = get_tensordatasets_from_folds(initial_split_sequenced)
   
     final_results = []

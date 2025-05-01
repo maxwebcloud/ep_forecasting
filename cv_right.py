@@ -556,16 +556,32 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             train_history_plot(train_loss_history, val_loss_history, final_model, seed)
 
             # Modellevaluation
+            train_loader, val_loader, test_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train = False)
+
             _, y_test_seq = initial_split_sequenced[0]["test"]
             y_test_seq = y_test_seq.reshape(-1,1)
-            predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device =device)
+            test_predictions = get_predictions_in_batches(final_model, dataloader = test_loader, device =device)
             y_test_seq_rescaled = scalers_y[0].inverse_transform(y_test_seq)
-            predictions_rescaled = scalers_y[0].inverse_transform(predictions)
+            test_predictions_rescaled = scalers_y[0].inverse_transform(test_predictions)
 
-            mse_scaled = np.mean((predictions - y_test_seq)**2)
+            train_predictions = get_predictions_in_batches(final_model, dataloader = train_loader, device =device)
+            _, y_train_seq = initial_split_sequenced[0]["train"]
+            y_train_seq_rescaled = scalers_y[0].inverse_transform(y_train_seq)
+            train_predictions_rescaled = scalers_y[0].inverse_transform(train_predictions)
+
+            val_predictions = get_predictions_in_batches(final_model, dataloader = val_loader, device =device)
+            _, y_val_seq = initial_split_sequenced[0]["val"]
+            y_val_seq_rescaled = scalers_y[0].inverse_transform(y_val_seq)
+            val_predictions_rescaled = scalers_y[0].inverse_transform(val_predictions)
+
+            mse_scaled = np.mean((test_predictions - y_test_seq)**2)
             rmse_scaled = np.sqrt(mse_scaled)
-            mse_orig = np.mean((predictions_rescaled - y_test_seq_rescaled)**2)
+            mse_orig = np.mean((test_predictions_rescaled - y_test_seq_rescaled)**2)
             rmse_orig = np.sqrt(mse_orig)
+            mse_train = np.mean((train_predictions_rescaled - y_train_seq_rescaled)**2)
+            rmse_train = np.sqrt(mse_train)
+            mse_val = np.mean((val_predictions_rescaled - y_val_seq_rescaled)**2)
+            rmse_val = np.sqrt(mse_val)
 
             console.print(f"[bold turquoise2]Out of Sample Performance: {rmse_scaled}[/bold turquoise2]")
             final_results.append({
@@ -575,7 +591,11 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
             "rmse_scaled": rmse_scaled,
             "mse_scaled": mse_scaled,
             "rmse_orig": rmse_orig,
-            "mse_orig": mse_orig
+            "mse_orig": mse_orig,
+            "rmse_train": rmse_train,
+            "mse_train": mse_train,
+            "rmse_val": rmse_val,
+            "mse_val": mse_val
             })
     
     final_eval_df = pd.DataFrame(final_results)
@@ -592,7 +612,7 @@ with open("data/df_final_eng.pkl", "rb") as f:
 X = df_final[df_final.columns.drop('price actual')].values
 y = np.array(df_final['price actual']).reshape(-1,1)
 
-results = cross_validate_time_series([SimpleRNN, LSTMModel], [42, 81], X, y,torch.device("cpu"))
+results = cross_validate_time_series([LSTMModel], [81], X, y,torch.device("cpu"))
 print(results)
 
 """

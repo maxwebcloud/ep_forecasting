@@ -381,9 +381,16 @@ def hyperparameter_tuning(Model, folds, seed, device):
     trial_start_time = time.time()
     
     sampler = optuna.samplers.TPESampler(seed=seed)
-    pruner = optuna.pruners.HyperbandPruner(min_resource=5, max_resource=15, reduction_factor=3)
+    #pruner = optuna.pruners.HyperbandPruner(min_resource=5, max_resource=15, reduction_factor=3)
+    pruner = optuna.pruners.SuccessiveHalvingPruner(
+    min_resource     = 5,   # erste “Runde” = 5 Epochen
+    reduction_factor = 3,   # jedes Mal nur 1/3 der Trials weiterlassen
+    min_early_stopping_rate = 0   # (optional) Defaults passen meist        
+    )
+ 
+    #pruner  = optuna.pruners.NopPruner()
     study = optuna.create_study(direction='minimize', sampler=sampler, pruner=pruner)
-    study.optimize(objective, n_trials=3, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
+    study.optimize(objective, n_trials=10, n_jobs=1, callbacks=[callback]) #n_jobs necessary for reoproducibility
     
     # Calculate total time for tuning
     total_tuning_time = time.time() - total_start_time

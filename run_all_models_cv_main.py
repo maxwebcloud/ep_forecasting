@@ -79,9 +79,9 @@ MODELS = {
 
 CV_PARAMS = {
     "n_folds": 5,
-    "train_size": 0.6,
-    "val_size": 0.2,
-    "test_size": 0.2,
+    "train_size": 0.77,
+    "val_size": 0.11,
+    "test_size": 0.12,
     "sequence_length": 24,
     "step_size": 1,
     "variance_ratio": 0.8,
@@ -285,31 +285,33 @@ processed_results = {}
 for result in results:
     name  = result["model"]
     seed  = result["seed"]
-    rmse  = result["rmse"]
-    processed_results.setdefault(name, []).append((seed, rmse))
+    rmse_scaled  = result["rmse_scaled"]
+    rmse_orig  = result["rmse_orig"]
+    processed_results.setdefault(name, []).append((seed, rmse_scaled, rmse_orig))
 
 # ---------------------------------
 # Print section per model
 # ---------------------------------
 for model_name, results_list in processed_results.items():
-    rmses = [rmse for _, rmse in results_list]
-
-    summary_lines.append(f"\nModel: {model_name}")
-    summary_lines.append(f"  Device: {device_choice}")
-
-    # individual seeds
-    for seed, rmse in results_list:
-        summary_lines.append(f"  Seed {seed}: OOS-RMSE = {rmse:.4f}")
-
-    summary_lines.append(f"  Runtime: {model_runtimes[model_name]:.2f} min")
-
-    # Mean RMSE across all seeds
-    summary_lines.append(
-        f"\033[92m  Mean Out-of-Sample Performance (RMSE) across "
-        f"{len(rmses)} seeds: {np.mean(rmses):.4f}\033[0m"
-    )
+    rmses_scaled = [rmse_scaled for _, rmse_scaled, _ in results_list]
+    rmses_orig = [rmse_orig for _, _, rmse_orig in results_list]
     
-
+    summary_lines.append(f"\nModel: {model_name}")
+    summary_lines.append(f" Device: {device_choice}")
+    
+    for seed, rmse_scaled, rmse_orig in results_list:
+        summary_lines.append(f" Seed {seed}: OOS-RMSE (scaled) = {rmse_scaled:.4f}, OOS-RMSE (original) = {rmse_orig:.4f}")
+    
+    summary_lines.append(f" Runtime: {model_runtimes[model_name]:.2f} min")
+    
+    summary_lines.append(
+        f"\033[91mMean Out-of-Sample Performance (RMSE scaled) "
+        f"across {len(rmses_scaled)} seeds: {np.mean(rmses_scaled):.4f}\033[0m"
+    )
+    summary_lines.append(
+        f"\033[94mMean Out-of-Sample Performance (RMSE original) "
+        f"across {len(rmses_orig)} seeds: {np.mean(rmses_orig):.4f}\033[0m"
+    )
 # ---------------------------------
 # Overall runtime
 # ---------------------------------

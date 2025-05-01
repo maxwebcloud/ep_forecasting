@@ -496,8 +496,10 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     n = len(X)  
     splits = get_time_series_split_indices(n, train_frac = train_size, val_frac = val_size, test_frac = test_size)
 
-    X_trainVal_full = X[splits["train_idx"][0] : splits["val_idx"][1]]
-    y_trainVal_full = y[splits["train_idx"][0] : splits["val_idx"][1]]
+    #X_trainVal_full = X[splits["train_idx"][0] : splits["val_idx"][1]] //für train und val zusammen 
+    #y_trainVal_full = y[splits["train_idx"][0] : splits["val_idx"][1]] //für train und val zusammen 
+    X_train_full = X[splits["train_idx"][0] : splits["train_idx"][1]]
+    y_train_full = y[splits["train_idx"][0] : splits["train_idx"][1]]
 
     initial_split = [{
         "train": (X[splits["train_idx"][0] : splits["train_idx"][1]], y[splits["train_idx"][0] : splits["train_idx"][1]]),
@@ -506,7 +508,17 @@ def cross_validate_time_series(models, seeds, X, y, device , train_size=0.6, val
     }]
 
     # Aus Train- und Validationsdaten die Folds erzeugen
-    folds = split_data_time_series_sliding_auto_folds(X_trainVal_full, y_trainVal_full, n_folds=n_folds, slide_fraction=0.2, train_frac=0.8, val_frac=0.2)
+    #folds = split_data_time_series_sliding_auto_folds(X_trainVal_full, y_trainVal_full, n_folds=n_folds, slide_fraction=0.2, train_frac=0.8, val_frac=0.2)
+
+
+    # Folds  ausschliesslich aus den 77 % Train-Daten bilden
+    folds = split_data_time_series_sliding_auto_folds(
+            X_train_full,  y_train_full,
+            n_folds       = n_folds,
+            slide_fraction= 0.2,     # ggf. 1.0, falls du KEINE Überlappung willst
+            train_frac    = 0.8,
+            val_frac      = 0.2)
+
 
     # Folds Skalieren + Komprimieren
     folds_preprocessed = preprocessing(folds, variance_ratio)

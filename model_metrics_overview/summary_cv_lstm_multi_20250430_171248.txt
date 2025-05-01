@@ -1,0 +1,11 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Model: lstm
+ Device: mps
+ Seed 81: OOS-RMSE (scaled) = 0.0214, OOS-RMSE (original) = 2.3027
+ Runtime: 2.08 min
+[91mMean Out-of-Sample Performance (RMSE scaled) across 1 seeds: 0.0214[0m
+[94mMean Out-of-Sample Performance (RMSE original) across 1 seeds: 2.3027[0m
+
+Total runtime (all models & seeds): 2.08 min  |  0.03 h

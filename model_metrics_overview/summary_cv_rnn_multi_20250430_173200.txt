@@ -1,0 +1,11 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Model: rnn
+ Device: cpu
+ Seed 81: OOS-RMSE (scaled) = 0.0255, OOS-RMSE (original) = 2.7398
+ Runtime: 1.18 min
+[91mMean Out-of-Sample Performance (RMSE scaled) across 1 seeds: 0.0255[0m
+[94mMean Out-of-Sample Performance (RMSE original) across 1 seeds: 2.7398[0m
+
+Total runtime (all models & seeds): 1.18 min  |  0.02 h

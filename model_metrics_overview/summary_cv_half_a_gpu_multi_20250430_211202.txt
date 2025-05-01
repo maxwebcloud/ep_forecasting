@@ -1,0 +1,26 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Model: lstm
+ Device: mps
+ Seed 81: OOS-RMSE (scaled) = 0.0214, OOS-RMSE (original) = 2.3027
+ Seed 14: OOS-RMSE (scaled) = 0.0245, OOS-RMSE (original) = 2.6363
+ Seed 3: OOS-RMSE (scaled) = 0.0247, OOS-RMSE (original) = 2.6550
+ Seed 94: OOS-RMSE (scaled) = 0.0218, OOS-RMSE (original) = 2.3436
+ Seed 35: OOS-RMSE (scaled) = 0.0220, OOS-RMSE (original) = 2.3681
+ Runtime: 18.65 min
+[91mMean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0229[0m
+[94mMean Out-of-Sample Performance (RMSE original) across 5 seeds: 2.4611[0m
+
+Model: slstm
+ Device: mps
+ Seed 81: OOS-RMSE (scaled) = 0.0231, OOS-RMSE (original) = 2.4782
+ Seed 14: OOS-RMSE (scaled) = 0.0301, OOS-RMSE (original) = 3.2314
+ Seed 3: OOS-RMSE (scaled) = 0.0255, OOS-RMSE (original) = 2.7414
+ Seed 94: OOS-RMSE (scaled) = 0.0285, OOS-RMSE (original) = 3.0669
+ Seed 35: OOS-RMSE (scaled) = 0.0222, OOS-RMSE (original) = 2.3878
+ Runtime: 23.13 min
+[91mMean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0259[0m
+[94mMean Out-of-Sample Performance (RMSE original) across 5 seeds: 2.7812[0m
+
+Total runtime (all models & seeds): 41.77 min  |  0.70 h

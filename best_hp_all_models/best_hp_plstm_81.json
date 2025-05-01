@@ -1,0 +1,1 @@
+{"lstm_units": 112, "dropout_rate_lstm": 0.2, "dense_units": 64, "dropout_rate_dense": 0.4, "learning_rate": 0.001}

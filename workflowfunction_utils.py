@@ -1,31 +1,71 @@
-#Packages 
+
+"""
+workflow_utils.py 
+Last changes: 16.05.2025
+
+Provides utilities to:
+  • select device (CPU/GPU)
+  • ensure reproducibility (seed setting)
+  • split time series into train/validation/test sets
+  • scale data and apply PCA
+  • tranform data into PyTorch DataLoaders
+  • perform hyperparameter tuning and final model training
+  • make predictions and compute model performance (e.g., out-of-sample RMSE)
+  • generate naive forecast baseline
+  • plot residuals 
+  • wraps the entire workflow via `cross_validate_time_series()`
+"""
+
+
+# ============================================================================
+# Imports
+# ============================================================================
+
+# Standard Libraries
+import json
+
+# Numerical Libraries
 import numpy as np
-import pickle 
+import scipy.stats as stats
+
+# Scikit-Learn: Dimensionality Reduction, Scaling & TimeSeries-Splits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import TimeSeriesSplit
+
+# Deep Learning (PyTorch)
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-import json
+
+# Hyperparameter Optimization
 import optuna
 from optuna.pruners import HyperbandPruner
+
+# Rich CLI & PPrinting
 from rich import print
 from rich.console import Console
+
+# Custom Forecast & Utility Modules
 from naive_forecast import naive_forecast
-import scipy.stats as stats
 from models_utils import *
 
+
+
+# ============================================================================
+# 1. Environment & Reproducibility Setup
+# ============================================================================
 
 def get_device(use_gpu=True):
     """
     Returns the appropriate torch.device based on use_gpu flag.
-    Supports Apple M1/M2 (MPS) or falls back to CPU.
+    Apple MPS or fallback to CPU
     """
     if use_gpu and torch.backends.mps.is_available():
         return torch.device("mps")
     else:
         return torch.device("cpu")
+    
 
 def set_seed(SEED, device=None):
     import torch
@@ -46,6 +86,9 @@ def set_seed(SEED, device=None):
 
     torch.use_deterministic_algorithms(True)
 
+# ============================================================================
+# 2. Time Series Split Indices
+# ============================================================================
 
 def get_time_series_split_indices(n_samples, train_frac=0.7, val_frac=0.15, test_frac=0.15):
     assert abs(train_frac + val_frac + test_frac - 1.0) < 1e-6, "Fractions must sum to 1."
@@ -107,6 +150,10 @@ def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fra
 
     return fold_data
 
+# ============================================================================
+# 3. Scaling
+# ============================================================================
+
 def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
     """
     Fit MinMaxScaler für Features (X) und Zielvariable (y) auf Trainingsdaten.
@@ -126,6 +173,11 @@ def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
     scaler_y.fit(y_train.reshape(-1, 1))  # reshape für Kompatibilität
 
     return scaler_X, scaler_y
+
+
+# ============================================================================
+# 4. Scaling + PCA 
+# ============================================================================
 
 def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     """
@@ -195,6 +247,9 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     else:
         return processed_folds
 
+# ============================================================================
+# 5. Sequence creation & TensorDataset conversion
+# ============================================================================
 
 def create_sequences_for_folds(folds, history_size, target_size, step, single_step):
     """
@@ -327,138 +382,116 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
 
     return train_loader, val_loader, test_loader
 
+# ============================================================================
+# 6. Hyperparamter Tuning 
+# ============================================================================
 
+# Hyperparameter Tuning with Early Stopping
 
-def hyperparameter_tuning(Model, folds, seed, device):
+def hyperparameter_tuning(Model, folds, seed, device, 
+                          max_epochs=15, patience=3, n_trials=10):
     """
-    Optuna-Tuning mit Successive-Halving.
-    nach JEDER Epoche wird der mittlere Val-Loss
-      über alle Folds an Optuna reported
+    Optuna tuning with Successive-Halving pruner + early stopping.
+    After every epoch we report the mean val-loss over all folds to Optuna.
     """
-    import time, numpy as np, torch, optuna
+    import time, numpy as np, torch, optuna, json
     from torch import nn
 
-    ##Utility functions for HP tuning
-    def _train_single_epoch(model, train_loader, optimizer, criterion, device):
+    # Helper functions
+    def _train_single_epoch(model, loader, optimizer, criterion):
         model.train()
-        for Xb, yb in train_loader:
+        for Xb, yb in loader:
             Xb, yb = Xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            pred = model(Xb)
-            loss = criterion(pred, yb)
+            loss = criterion(model(Xb), yb.to(device))
             loss.backward()
             optimizer.step()
 
-    def _validate(model, val_loader, criterion, device):
+    def _validate(model, loader, criterion):
         model.eval()
-        val_loss = 0.0
+        total = 0.0
         with torch.no_grad():
-            for Xb, yb in val_loader:
-                Xb, yb = Xb.to(device), yb.to(device)
-                pred = model(Xb)
-                val_loss += criterion(pred, yb).item()
-        return val_loss / len(val_loader)
+            for Xb, yb in loader:
+                total += criterion(model(Xb.to(device)), yb.to(device)).item()
+        return total / len(loader)
 
-    total_start_time = time.time()
-
-    #Trial-Laufzeit
-    trial_times, trial_start_time = {}, None
+    # Callback for timing
+    start = time.time()
+    trial_times, last_start = {}, None
     def callback(study, trial):
-        nonlocal trial_start_time, trial_times
-        if trial_start_time is not None:
-            trial_times[trial.number] = time.time() - trial_start_time
-        trial_start_time = time.time()
+        nonlocal last_start
+        if last_start is not None:
+            trial_times[trial.number] = time.time() - last_start
+        last_start = time.time()
 
-    # Objective
+    # Objective function
     def objective(trial):
-        hp          = Model.suggest_hyperparameters(trial)
-        num_epochs  = 15           # Max-Epochen
-        min_res     = 5            # muss zum Pruner passen
-
-        #jeden Fold vorbereiten
+        hp = Model.suggest_hyperparameters(trial)
         fold_states = []
         for fold in folds:
             set_seed(seed, device)
             tr_ds, va_ds = fold["train"], fold["val"]
-            n_feat       = tr_ds.tensors[0].shape[-1]
             tr_loader, va_loader, _ = get_dataloaders(seed, tr_ds, va_ds)
+            m = Model(input_size=tr_ds.tensors[0].shape[-1], hp=hp).to(device)
+            fold_states.append({
+                "model": m,
+                "opt": torch.optim.Adam(m.parameters(), lr=hp["learning_rate"]),
+                "crit": nn.MSELoss(),
+                "tr": tr_loader,
+                "va": va_loader
+            })
 
-            model     = Model(input_size=n_feat, hp=hp).to(device)
-            criterion = nn.MSELoss().to(device)
-            optimizer = torch.optim.Adam(model.parameters(),
-                                         lr=hp["learning_rate"])
+        best_val = float("inf")
+        no_improve = 0
 
-            fold_states.append(dict(model=model,
-                                    opt=optimizer,
-                                    crit=criterion,
-                                    tr_loader=tr_loader,
-                                    va_loader=va_loader))
-
-        best_mean_val = float('inf')
-
-        # epoch-Schleife (gemeinsam für alle Folds)
-        for epoch in range(num_epochs):
-            epoch_val_losses = []
-
+        for epoch in range(max_epochs):
+            losses = []
             for st in fold_states:
-                # 1 Epoche Training
-                _train_single_epoch(st["model"],
-                                    st["tr_loader"],
-                                    st["opt"],
-                                    st["crit"],
-                                    device)
-                # Validation
-                v_loss = _validate(st["model"],
-                                   st["va_loader"],
-                                   st["crit"],
-                                   device)
-                epoch_val_losses.append(v_loss)
+                _train_single_epoch(st["model"], st["tr"], st["opt"], st["crit"])
+                losses.append(_validate(st["model"], st["va"], st["crit"]))
+            mean_val = float(np.mean(losses))
 
-            mean_val = float(np.mean(epoch_val_losses))
-            best_mean_val = min(best_mean_val, mean_val)
-
-            # Report an Optuna nach Epoche
+            # report & prune
             trial.report(mean_val, epoch)
-
-            # Report nach Epoche
             if trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
 
-        return best_mean_val    # Score des Trials
+            # early stopping
+            if mean_val < best_val - 1e-8:
+                best_val, no_improve = mean_val, 0
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    break
 
-    # Setup & Aufruf von Optuna 
+        return best_val
+
+    # Study creation & optimization
     sampler = optuna.samplers.TPESampler(seed=seed)
-    pruner  = optuna.pruners.SuccessiveHalvingPruner(
-        min_resource=5, reduction_factor=3)
+    pruner  = optuna.pruners.SuccessiveHalvingPruner(min_resource=5, reduction_factor=3)
+    study = optuna.create_study(direction="minimize", sampler=sampler, pruner=pruner)
+    study.optimize(objective, n_trials=n_trials, n_jobs=1, callbacks=[callback])
 
-    study = optuna.create_study(direction="minimize",
-                                sampler=sampler,
-                                pruner=pruner)
-    study.optimize(objective,
-                   n_trials=10,
-                   n_jobs=1,
-                   callbacks=[callback])
+    # Print results
+    import json
+    from pprint import pprint
+    total_tuning_time = time.time() - start
 
-    # Calculate total time for tuning
-    total_tuning_time = time.time() - total_start_time
-
-    # Output results
     print("\nSummary of trial times:")
-    for trial_num, trial_time in trial_times.items():
-        print(f"Trial {trial_num}: {trial_time:.2f} seconds")
-    
-    if len(trial_times) > 0:
+    pprint(trial_times)  # schön formatiert
+
+    if trial_times:
         avg_time = sum(trial_times.values()) / len(trial_times)
-        print(f"Average trial time: {avg_time:.2f} seconds")
-    
-    print(f"Total hyperparameter tuning time: {total_tuning_time:.2f} seconds ({total_tuning_time/60:.2f} minutes)")
+        print(f"\nAverage trial time: {avg_time:.2f} seconds")
+
+    print(f"\nTotal hyperparameter tuning time: {total_tuning_time:.2f} seconds "
+        f"({total_tuning_time/60:.2f} minutes)")
 
     print("\nBest trial parameters:")
-    for key, value in study.best_trial.params.items():
-        print(f"{key}: {value}")
+    print(json.dumps(study.best_trial.params, indent=4))
 
-    best_hp = study.best_trial.params
-    return study, best_hp
+    return study, study.best_trial.params
+
 
 
 # save best hyperparameters
@@ -467,6 +500,9 @@ def save_best_hp(model, study, SEED):
     with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "w") as f:
         json.dump(best_hp, f)
 
+# ============================================================================
+# 7. Final Model Trainng 
+# ============================================================================
 
 # load best hyperparameters 
 def load_best_hp(model, SEED):
@@ -561,6 +597,10 @@ def train_history_plot(train_loss_history, val_loss_history, model, SEED):
     plt.close()
     
 
+
+# ============================================================================
+# 8. Predictions and Plots 
+# ============================================================================
 # Make predictions
 def get_predictions_in_batches(final_model, dataloader, device):
     final_model.eval()
@@ -638,6 +678,11 @@ def load_model(model, input_size, seed, device):
     return model_final
 
 
+
+
+# ============================================================================
+# 10. Warapper: End-to-End Cross-Validation Workflow
+# ============================================================================
 
 def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_size=0.2, test_size=0.2, 
                                sequence_length=24, target_size = 0, step_size=1, n_folds = 5, variance_ratio=0.8, single_step= True):
@@ -783,7 +828,7 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
             })
 
             # Residual Plots erstellen
-            print(splits["test_idx"][0])
+            #print(splits["test_idx"][0])
             plot_residuals_with_index(y_test_seq_rescaled, test_predictions_rescaled, model, df, sequence_length, splits["test_idx"][0], seed)
 
         

@@ -10,8 +10,8 @@ import os
 
 #vorrübergehend
 from sklearn.decomposition import PCA
-from cv_right import fit_minmax_scalers, get_time_series_split_indices, create_sequences_for_folds
-from workflowfunctions_utils import load_model
+from workflowfunction_utils import fit_minmax_scalers, get_time_series_split_indices, create_sequences_for_folds
+from workflowfunction_utils import load_model
 from models_utils import LSTMModel
 
 

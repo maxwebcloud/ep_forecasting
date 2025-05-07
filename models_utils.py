@@ -1,4 +1,17 @@
-# Import Libraries
+"""
+models_utils.py
+Last changes: 16.05.2025
+
+Provides utilities to:
+  • define models (RNN, LSTM, SLSTM, PLSTM)
+  • specify each model’s architecture and hyperparameter space
+"""
+
+
+# ============================================================================
+# Imports
+# ============================================================================
+
 # Standard Libraries
 import random
 import os
@@ -30,6 +43,10 @@ import joblib
 scaler_y = joblib.load("data/scaler_y.pkl")
 
 
+
+# ============================================================================
+# Model classes
+# ============================================================================
 
 # RNN Model ----------------------------------------------------------------------------------------------------------------------------------------------------
 

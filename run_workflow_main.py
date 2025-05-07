@@ -118,24 +118,25 @@ selected_models = MODELS[mode]
 # ------------------------------------------------------------------
 # Global-Test-Only:  python run_all_models_cv_main.py --global_test
 # ------------------------------------------------------------------
+def friedman_test(path=Path("model_metrics_overview/oos_rmse_matrix.csv")):
+    import pandas as pd
+    from scipy.stats import friedmanchisquare
+    df = pd.read_csv(path, index_col="model").dropna(axis=1)
+    stat, p = friedmanchisquare(*df.to_numpy().T)
+    return stat, p
+
 if args.global_test:
     import sys
+
     matrix_file = Path("model_metrics_overview/oos_rmse_matrix.csv")
+    df = pd.read_csv(matrix_file, index_col="model").dropna(axis=1)
 
-    # CSV → DataFrame → Matrix
-    df = (pd.read_csv(matrix_file).set_index("model")
-            .dropna(axis=1, how="any"))            # nur vollständige Seeds
-    mat = df.to_numpy()                            # Zeilen = Modelle
-
-    from scipy.stats import friedmanchisquare
-    stat, p = friedmanchisquare(*mat)              # jede Modellzeile als Sequenz
+    stat, p = friedman_test(matrix_file)
 
     print("\n=== Globaler Friedman-Test ===")
     print(f"Modelle: {list(df.index)}")
     print(f"Seeds  : {list(df.columns)}")
     print(f"χ² = {stat:.3f},  p = {p:.4g}")
-
-    sys.exit(0)      # Skript hier beenden; kein Training mehr
 
 # ============================================================================
 # Seed Initialization
@@ -333,7 +334,7 @@ for model_name, results_list in processed_results.items():
     summary_lines.append(f" Device: {device_choice}")
     
     for seed, rmse_scaled, rmse_orig in results_list:
-        summary_lines.append(f" Seed {seed}: OOS-RMSE (scaled) = {rmse_scaled:.4f}, OOS-RMSE (original) = {rmse_orig:.4f}")
+        summary_lines.append(f" Seed {seed}: OOS-RMSE (scaled) = {rmse_scaled:.5f}, OOS-RMSE (original) = {rmse_orig:.5f}")
     
     runtime = model_runtimes.get(model_name)    
     summary_lines.append(
@@ -342,11 +343,11 @@ for model_name, results_list in processed_results.items():
     
     summary_lines.append(
         f" Mean Out-of-Sample Performance (RMSE scaled) "
-        f"across {len(rmses_scaled)} seeds: {np.mean(rmses_scaled):.2f}"
+        f"across {len(rmses_scaled)} seeds: {np.mean(rmses_scaled):.4f}"
     )
     summary_lines.append(
         f" Mean OOS Performance (RMSE original) "
-        f"across {len(rmses_orig)} seeds: {np.mean(rmses_orig):.2f}"
+        f"across {len(rmses_orig)} seeds: {np.mean(rmses_orig):.4f}"
     )
 
     p_val = model_pvalues.get(model_name)

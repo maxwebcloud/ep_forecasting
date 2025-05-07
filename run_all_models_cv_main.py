@@ -141,7 +141,7 @@ if args.global_test:
 # Seed Initialization
 # ============================================================================
 SEED = 42
-N_SEEDS = 1
+N_SEEDS = 5
 random.seed(SEED)
 np.random.seed(SEED)
 seeds_list = random.sample(range(0, 100), N_SEEDS)

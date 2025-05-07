@@ -5,7 +5,7 @@ This script runs selected model classes (defined in models_utils.py) on a given
 time series dataset and evaluates them using cross-validation.
 
 The core process is handled by the function `cross_validate_time_series` 
-(from cv_right.py), which performs preprocessing, sequence creation, 
+(from workflowfunctions_utils.py), which performs preprocessing, sequence creation, 
 hyperparameter tuning (via Optuna), training, evaluation, and result saving.
 
 For each model and seed combination, the function:
@@ -58,8 +58,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from models_utils import *
-from workflowfunctions_utils import get_device
-from cv_right import cross_validate_time_series
+from workflowfunction_utils import *
 
 # ============================================================================
 # Configuration: Models groups and cv-params 
@@ -90,13 +89,18 @@ CV_PARAMS = {
 
 # ============================================================================
 # Command Line Arguments
-# Enables dynamic configuration via CLI (model group, device)
+# Enables dynamic configuration os .py file execution via CLI (model, device, or global_test )
 # ============================================================================
 if USE_CLI:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=list(MODELS.keys()), default="standard")
     parser.add_argument("--device", choices=["cpu", "mps"], default="cpu")
+    parser.add_argument(
+        "--global_test",         # reines Flag
+        action="store_true",     # True = Friedman laufen & beenden
+        help="Führe sofort den globalen Friedman-Test auf oos_rmse_matrix.csv aus"
+    )
     args = parser.parse_args()
 
     mode = args.mode
@@ -109,11 +113,35 @@ else:
 
 selected_models = MODELS[mode]
 
+
+
+# ------------------------------------------------------------------
+# Global-Test-Only:  python run_all_models_cv_main.py --global_test
+# ------------------------------------------------------------------
+if args.global_test:
+    import sys
+    matrix_file = Path("model_metrics_overview/oos_rmse_matrix.csv")
+
+    # CSV → DataFrame → Matrix
+    df = (pd.read_csv(matrix_file).set_index("model")
+            .dropna(axis=1, how="any"))            # nur vollständige Seeds
+    mat = df.to_numpy()                            # Zeilen = Modelle
+
+    from scipy.stats import friedmanchisquare
+    stat, p = friedmanchisquare(*mat)              # jede Modellzeile als Sequenz
+
+    print("\n=== Globaler Friedman-Test ===")
+    print(f"Modelle: {list(df.index)}")
+    print(f"Seeds  : {list(df.columns)}")
+    print(f"χ² = {stat:.3f},  p = {p:.4g}")
+
+    sys.exit(0)      # Skript hier beenden; kein Training mehr
+
 # ============================================================================
 # Seed Initialization
 # ============================================================================
 SEED = 42
-N_SEEDS = 5
+N_SEEDS = 1
 random.seed(SEED)
 np.random.seed(SEED)
 seeds_list = random.sample(range(0, 100), N_SEEDS)
@@ -124,7 +152,7 @@ seeds_list = random.sample(range(0, 100), N_SEEDS)
 def print_settings():
     """Combined output of basic and advanced settings"""
     import inspect
-    import cv_right
+    import workflowfunction_utils as workflowfunctions_utils
     import re
     
     print("\n=== Starting run_all_models_cv.py ===")
@@ -148,12 +176,12 @@ def print_settings():
     print(f"  Variance ratio (PCA): {CV_PARAMS['variance_ratio']:.1f}")
     print(f"  Single step forecast: {CV_PARAMS['single_step']}")
     
-    # Dynamic settings from cv_right.py
+    # Dynamic settings from workflowfunctions_utils.py
     try:
-        # Extract values from cv_right.py functions
-        batch_size_source = inspect.getsource(cv_right.get_dataloaders) 
-        hyperparameter_tuning_source = inspect.getsource(cv_right.hyperparameter_tuning)
-        cv_time_series_source = inspect.getsource(cv_right.cross_validate_time_series)
+        # Extract values from workflowfunctions_utils.py functions
+        batch_size_source = inspect.getsource(workflowfunctions_utils.get_dataloaders) 
+        hyperparameter_tuning_source = inspect.getsource(workflowfunctions_utils.hyperparameter_tuning)
+        cv_time_series_source = inspect.getsource(workflowfunctions_utils.cross_validate_time_series)
         
         # Batch size settings
         batch_size_match = re.search(r'batch_size\s*=\s*(\d+)', batch_size_source)
@@ -210,12 +238,10 @@ print_settings()
 # ============================================================================
 # Data Loading
 # ============================================================================
-print("\nLoading data and extract feature matrix (X) and target vector (Y)... ")
+print("\nLoading data ... ")
 with open("data/df_final_eng.pkl", "rb") as f:
     df_final = pickle.load(f)
 
-X = df_final[df_final.columns.drop('price actual')].values
-y = df_final['price actual'].values.reshape(-1, 1)
 
 # ============================================================================
 # Device Setup 
@@ -242,12 +268,11 @@ for model_class in selected_models:
         torch.mps.empty_cache()
         assert torch.mps.current_allocated_memory() == 0, "⚠️ MPS memory not cleared!"
 
-    # Update the function call to match the signature in cv_right.py
+    # Update the function call to match the signature in workflowfunctions_utils.py
     model_results = cross_validate_time_series(
         models=[model_class],
         seeds=seeds_list,
-        X=X,                            # Changed from data=X
-        y=y,                            # Changed from target=y
+        df= df_final, 
         device=device,                  # Same device for all operations
         train_size=CV_PARAMS["train_size"],
         val_size=CV_PARAMS["val_size"],
@@ -255,8 +280,7 @@ for model_class in selected_models:
         sequence_length=CV_PARAMS["sequence_length"],
         step_size=CV_PARAMS["step_size"],
         n_folds=CV_PARAMS["n_folds"],
-        variance_ratio=CV_PARAMS["variance_ratio"],
-        single_step=CV_PARAMS["single_step"]
+        variance_ratio=CV_PARAMS["variance_ratio"],        single_step=CV_PARAMS["single_step"]
     )
 
     model_end = time.perf_counter()       
@@ -289,8 +313,17 @@ for result in results:
     rmse_orig  = result["rmse_orig"]
     processed_results.setdefault(name, []).append((seed, rmse_scaled, rmse_orig))
 
+model_pvalues = {}
+for r in results:
+    if r["p_value"] is not None:    
+        model_pvalues[r["model"]] = r["p_value"] 
+
+
+
+
+
 # ---------------------------------
-# Print section per model
+# Print section per model over all seeds
 # ---------------------------------
 for model_name, results_list in processed_results.items():
     rmses_scaled = [rmse_scaled for _, rmse_scaled, _ in results_list]
@@ -302,24 +335,50 @@ for model_name, results_list in processed_results.items():
     for seed, rmse_scaled, rmse_orig in results_list:
         summary_lines.append(f" Seed {seed}: OOS-RMSE (scaled) = {rmse_scaled:.4f}, OOS-RMSE (original) = {rmse_orig:.4f}")
     
-    summary_lines.append(f" Runtime: {model_runtimes[model_name]:.2f} min")
+    runtime = model_runtimes.get(model_name)    
+    summary_lines.append(
+        f" Runtime: {runtime:.2f} min" if runtime is not None else " Runtime: –"
+    )
     
     summary_lines.append(
-        f"\033[91mMean Out-of-Sample Performance (RMSE scaled) "
-        f"across {len(rmses_scaled)} seeds: {np.mean(rmses_scaled):.4f}\033[0m"
+        f" Mean Out-of-Sample Performance (RMSE scaled) "
+        f"across {len(rmses_scaled)} seeds: {np.mean(rmses_scaled):.2f}"
     )
     summary_lines.append(
-        f"\033[94mMean Out-of-Sample Performance (RMSE original) "
-        f"across {len(rmses_orig)} seeds: {np.mean(rmses_orig):.4f}\033[0m"
+        f" Mean OOS Performance (RMSE original) "
+        f"across {len(rmses_orig)} seeds: {np.mean(rmses_orig):.2f}"
     )
-# ---------------------------------
-# Overall runtime
-# ---------------------------------
-summary_lines.append(
-    f"\nTotal runtime (all models & seeds): "
-    f"{total_minutes:.2f} min  |  {total_hours:.2f} h"
-)
 
+    p_val = model_pvalues.get(model_name)
+    if p_val is not None:
+        summary_lines.append(
+            f" p-Value vs. naive model: {p_val:.4f}"
+        )
+
+    if model_name.lower() != "naive":            # Naive optional auslassen
+        row = {"model": model_name}              # 1 Zeile pro Modell
+        for seed, rmse_scaled, _ in results_list:
+            row[f"seed_{seed}"] = rmse_scaled    # dynamische Seed-Spalten
+
+        matrix_file = summary_dir / "oos_rmse_matrix.csv"
+
+        if matrix_file.exists():
+            df_mat = pd.read_csv(matrix_file)
+
+            # Modell-Zeile überschreiben oder anhängen
+            if model_name in df_mat["model"].values:
+                df_mat.loc[df_mat["model"] == model_name, row.keys()] = row.values()
+            else:
+                df_mat = pd.concat([df_mat, pd.DataFrame([row])],
+                                ignore_index=True)
+        else:
+            df_mat = pd.DataFrame([row])
+        
+        seed_cols          = [c for c in df_mat.columns if c.startswith("seed_")]
+        df_mat["rmse_mean"] = df_mat[seed_cols].mean(axis=1)
+
+        df_mat.to_csv(matrix_file, index=False)
+        
 # ---------------------------------
 # Join to single string
 # ---------------------------------
@@ -333,3 +392,5 @@ summary_dir.mkdir(exist_ok=True)
 filename = f"summary_cv_{mode}_multi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 (summary_dir / filename).write_text(summary_text, encoding="utf-8")
 print(f"\nRMSE-Summary saved to: {(summary_dir / filename).resolve()}")
+
+

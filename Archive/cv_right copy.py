@@ -12,7 +12,7 @@ import optuna
 from optuna.pruners import HyperbandPruner
 from rich import print
 from rich.console import Console
-from workflowfunctions_utils import set_seed, get_predictions_in_batches, get_device, save_best_hp, train_history_plot
+from Archive.workflowfunctions_utils import set_seed, get_predictions_in_batches, get_device, save_best_hp, train_history_plot
 from models_utils import *
 
 

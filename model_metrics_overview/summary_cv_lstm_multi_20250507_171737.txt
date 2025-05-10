@@ -1,0 +1,22 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Model: naive
+ Device: mps
+ Seed nan: OOS-RMSE (scaled) = 0.05134, OOS-RMSE (original) = 5.51758
+ Runtime: –
+ Mean Out-of-Sample Performance (RMSE scaled) across 1 seeds: 0.0513
+ Mean OOS Performance (RMSE original) across 1 seeds: 5.5176
+ p-Value vs. naive model: nan
+
+Model: lstm
+ Device: mps
+ Seed 81.0: OOS-RMSE (scaled) = 0.02462, OOS-RMSE (original) = 2.64643
+ Seed 14.0: OOS-RMSE (scaled) = 0.02129, OOS-RMSE (original) = 2.28785
+ Seed 3.0: OOS-RMSE (scaled) = 0.02616, OOS-RMSE (original) = 2.81114
+ Seed 94.0: OOS-RMSE (scaled) = 0.02440, OOS-RMSE (original) = 2.62246
+ Seed 35.0: OOS-RMSE (scaled) = 0.02132, OOS-RMSE (original) = 2.29127
+ Runtime: 25.85 min
+ Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0236
+ Mean OOS Performance (RMSE original) across 5 seeds: 2.5318
+ p-Value vs. naive model: 0.0625

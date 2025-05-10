@@ -1,0 +1,22 @@
+
+=== RMSE Summary (Cross-Validation) ===
+
+Model: naive
+ Device: cpu
+ Seed nan: OOS-RMSE (scaled) = 0.0513, OOS-RMSE (original) = 5.5176
+ Runtime: –
+ Mean Out-of-Sample Performance (RMSE scaled) across 1 seeds: 0.05
+ Mean OOS Performance (RMSE original) across 1 seeds: 5.52
+ p-Value vs. naive model: nan
+
+Model: rnn
+ Device: cpu
+ Seed 81.0: OOS-RMSE (scaled) = 0.0194, OOS-RMSE (original) = 2.0870
+ Seed 14.0: OOS-RMSE (scaled) = 0.0216, OOS-RMSE (original) = 2.3161
+ Seed 3.0: OOS-RMSE (scaled) = 0.0228, OOS-RMSE (original) = 2.4486
+ Seed 94.0: OOS-RMSE (scaled) = 0.0221, OOS-RMSE (original) = 2.3712
+ Seed 35.0: OOS-RMSE (scaled) = 0.0210, OOS-RMSE (original) = 2.2564
+ Runtime: 45.84 min
+ Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.02
+ Mean OOS Performance (RMSE original) across 5 seeds: 2.30
+ p-Value vs. naive model: 0.0625

@@ -478,7 +478,7 @@ def hyperparameter_tuning(Model, folds, seed, device,
     total_tuning_time = time.time() - start
 
     print("\nSummary of trial times:")
-    pprint(trial_times)  # schön formatiert
+    pprint(trial_times) 
 
     if trial_times:
         avg_time = sum(trial_times.values()) / len(trial_times)

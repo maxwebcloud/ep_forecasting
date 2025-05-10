@@ -1,5 +1,6 @@
 """
-run_all_models_cv.py
+run_all_models_main.py
+Last changes: 16.05.2025
 
 This script runs selected model classes (defined in models_utils.py) on a given 
 time series dataset and evaluates them using cross-validation.
@@ -32,31 +33,45 @@ Available CLI options:
     - "cpu"        → Force model(s) to run on CPU
     - "mps"        → Use Apple MPS backend if available (for Apple Silicon GPUs)
 
+    
+--global_test     : Run global friedman tesst 
+
+
+
 Examples:
 ---------
 Run LSTM on MPS:
-    python run_all_models_cv_main.py --mode lstm --device mps
+    python run_workflow_main.py --mode lstm --device mps
 
 Run all models on CPU:
-    python run_all_models_cv_main.py --mode standard --device cpu
+    python run_workflow_main.py --mode standard --device cpu
 """
+
 
 # ============================================================================
 # Imports
 # ============================================================================
+# Environment Configuration
 import os
-from re import S
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
-import torch
-import numpy as np
+# Standard Libraries
+from re import S
 import random
 import time
 import pickle
-import pandas as pd
 from pathlib import Path
 from datetime import datetime
+
+# Numerical Libraries
+import numpy as np
+import pandas as pd
+
+# Deep Learning (PyTorch)
+import torch
+
+# Custom Utility Modules
 from models_utils import *
 from workflowfunction_utils import *
 
@@ -116,7 +131,7 @@ selected_models = MODELS[mode]
 
 
 # ------------------------------------------------------------------
-# Global-Test-Only:  python run_all_models_cv_main.py --global_test
+# Global-Test-Only:  python run_workflow_main.py --global_test
 # ------------------------------------------------------------------
 def friedman_test(path=Path("model_metrics_overview/oos_rmse_matrix.csv")):
     import pandas as pd
@@ -356,10 +371,10 @@ for model_name, results_list in processed_results.items():
             f" p-Value vs. naive model: {p_val:.4f}"
         )
 
-    if model_name.lower() != "naive":            # Naive optional auslassen
-        row = {"model": model_name}              # 1 Zeile pro Modell
+    if model_name.lower() != "naive":           
+        row = {"model": model_name}            
         for seed, rmse_scaled, _ in results_list:
-            row[f"seed_{seed}"] = rmse_scaled    # dynamische Seed-Spalten
+            row[f"seed_{seed}"] = rmse_scaled   
 
         matrix_file = summary_dir / "oos_rmse_matrix.csv"
 

@@ -109,9 +109,9 @@ class LSTMModel(nn.Module):
     def suggest_hyperparameters(trial):
         return{
             'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
-            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
+            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.5, step=0.1),
             'dense_units': trial.suggest_int('dense_units', 16, 64, step=16),
-            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.3, step=0.1),
+            'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
             'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
         }
 
@@ -149,8 +149,8 @@ class StackedLSTMModel(nn.Module):
         return{
             'lstm_units_1': trial.suggest_int('lstm_units_1', 32, 256, step=16),
             'lstm_units_2': trial.suggest_int('lstm_units_2', 32, 256, step=16),
-            'dropout_rate_lstm_1': trial.suggest_float('dropout_rate_lstm_1', 0.1, 0.3, step=0.1),
-            'dropout_rate_lstm_2': trial.suggest_float('dropout_rate_lstm_2', 0.1, 0.3, step=0.1),
+            'dropout_rate_lstm_1': trial.suggest_float('dropout_rate_lstm_1', 0.1, 0.5, step=0.1),
+            'dropout_rate_lstm_2': trial.suggest_float('dropout_rate_lstm_2', 0.0, 0.4, step=0.1),
             'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
             'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
             'learning_rate': trial.suggest_categorical('learning_rate', [1e-2, 1e-3, 1e-4])
@@ -184,7 +184,7 @@ class PhasedLSTMModel(nn.Module):
     def suggest_hyperparameters(trial):
         return{
             'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
-            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.3, step=0.1),
+            'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.5, step=0.1),
             'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
             'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
             'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])

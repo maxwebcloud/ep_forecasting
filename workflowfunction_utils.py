@@ -151,7 +151,7 @@ def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fra
     return fold_data
 
 # ============================================================================
-# 3. Scaling
+# 3. Preprocessing
 # ============================================================================
 
 def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
@@ -174,10 +174,6 @@ def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
 
     return scaler_X, scaler_y
 
-
-# ============================================================================
-# 4. Scaling + PCA 
-# ============================================================================
 
 def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     """
@@ -248,7 +244,7 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
         return processed_folds
 
 # ============================================================================
-# 5. Sequence creation & TensorDataset conversion
+# 4. Sequence creation & TensorDataset conversion
 # ============================================================================
 
 def create_sequences_for_folds(folds, history_size, target_size, step, single_step):
@@ -383,7 +379,7 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
     return train_loader, val_loader, test_loader
 
 # ============================================================================
-# 6. Hyperparamter Tuning 
+# 5. Hyperparamter Tuning 
 # ============================================================================
 
 # Hyperparameter Tuning with Early Stopping
@@ -510,16 +506,15 @@ def load_best_hp(model, SEED):
         best_hp = json.load(f)
     return best_hp
 
-
-def model_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed, trial=None, final=False, step_offset=0):
+# final model training
+def final_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed):
     import time
     
     set_seed(seed, device)
 
     # Start time measurement for final training
-    if final:
-        start_time = time.time()
-        print(f"Starting final training with {num_epochs} epochs and patience {patience}...")
+    start_time = time.time()
+    print(f"Starting final training with {num_epochs} epochs and patience {patience}...")
 
     best_val_loss = float('inf')
     early_stopping_counter = 0
@@ -556,8 +551,7 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         val_loss /= len(val_loader)
         val_loss_history.append(val_loss)
 
-        if final:
-            print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
         # Early Stopping
         if val_loss < best_val_loss:
@@ -567,17 +561,13 @@ def model_train(model, criterion, optimizer, val_loader, train_loader, device, n
         else:
             early_stopping_counter += 1
             if early_stopping_counter >= patience:
-                if final:
-                    print(f"Early stopping triggered after epoch {epoch+1}")
+                print(f"Early stopping triggered after epoch {epoch+1}")
                 break
         
+    training_time = time.time() - start_time
+    print(f'Final training completed in {training_time:.2f} seconds ({training_time/60:.2f} minutes)')
+    return best_model, train_loss_history, val_loss_history
 
-    if final:
-        training_time = time.time() - start_time
-        print(f'Final training completed in {training_time:.2f} seconds ({training_time/60:.2f} minutes)')
-        return best_model, train_loss_history, val_loss_history
-    else:
-        return best_val_loss
     
 
 def train_history_plot(train_loss_history, val_loss_history, model, SEED):
@@ -592,7 +582,7 @@ def train_history_plot(train_loss_history, val_loss_history, model, SEED):
     filename = f"{model.name}_train_history_{SEED}.png"
     filepath = os.path.join("plots", filename)
 
-    # Speichern & schließen
+    # Save & close
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
     
@@ -601,6 +591,7 @@ def train_history_plot(train_loss_history, val_loss_history, model, SEED):
 # ============================================================================
 # 8. Predictions and Plots 
 # ============================================================================
+
 # Make predictions
 def get_predictions_in_batches(final_model, dataloader, device):
     final_model.eval()
@@ -611,7 +602,7 @@ def get_predictions_in_batches(final_model, dataloader, device):
             preds.append(final_model(X_batch).cpu().numpy())  # Immer .cpu() für späteres numpy
     return np.vstack(preds)
 
-
+# Generate residual plots
 def plot_residuals_with_index(y_true, y_pred, model, df_final,seq_length, test_index, seed, bins="auto"):
     """
     Generate and save three separate residual plots:
@@ -681,7 +672,7 @@ def load_model(model, input_size, seed, device):
 
 
 # ============================================================================
-# 10. Warapper: End-to-End Cross-Validation Workflow
+# 10. Wrapper: End-to-End Cross-Validation Workflow
 # ============================================================================
 
 def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_size=0.2, test_size=0.2, 
@@ -689,14 +680,11 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
     
     console = Console() 
 
-    # Splitten der Daten in Target und Features +  Trainings-, Val- und Testset
+    # Splittinh the data in target und features +  trainings-, val- und testset
     X = df[df.columns.drop('price actual')].values
     y = np.array(df['price actual']).reshape(-1,1)
     n = len(X)  
     splits = get_time_series_split_indices(n, train_frac = train_size, val_frac = val_size, test_frac = test_size)
-
-    #X_trainVal_full = X[splits["train_idx"][0] : splits["val_idx"][1]] //für train und val zusammen 
-    #y_trainVal_full = y[splits["train_idx"][0] : splits["val_idx"][1]] //für train und val zusammen 
     X_train_full = X[splits["train_idx"][0] : splits["train_idx"][1]]
     y_train_full = y[splits["train_idx"][0] : splits["train_idx"][1]]
 
@@ -706,37 +694,31 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
         "test": (X[splits["test_idx"][0] : splits["test_idx"][1]], y[splits["test_idx"][0] : splits["test_idx"][1]])
     }]
 
-    # Aus Train- und Validationsdaten die Folds erzeugen
-    #folds = split_data_time_series_sliding_auto_folds(X_trainVal_full, y_trainVal_full, n_folds=n_folds, slide_fraction=0.2, train_frac=0.8, val_frac=0.2)
-
-
-    # Folds  ausschliesslich aus den 77 % Train-Daten bilden
+    # Generate folds only from the trainingsset (77%) 
     folds = split_data_time_series_sliding_auto_folds(
             X_train_full,  y_train_full,
             n_folds       = n_folds,
-            slide_fraction= 0.2,     # ggf. 1.0, falls du KEINE Überlappung willst
+            slide_fraction= 0.2,     # 1.0, if no overlappimg wanted
             train_frac    = 0.8,
             val_frac      = 0.2)
 
 
-    # Folds Skalieren + Komprimieren
+    # Scaling + dimension reduction on folds
     folds_preprocessed = preprocessing(folds, variance_ratio)
-
-    # Folds in Sequenzen schneiden + in Tensordtasets wandeln
+    # Cut folds in sequences + transform in tensordatasets
     folds_sequenced = create_sequences_for_folds(folds_preprocessed, sequence_length, target_size, step_size, single_step)
     folds_tensordatasets = get_tensordatasets_from_folds(folds_sequenced)
 
 
-    # Initialer Split Skalieren + Komprimieren
+    # Scaling + dimension reduction on initial split
     initial_split_preprocessed, _, _, scalers_y = preprocessing(initial_split, variance_ratio, return_pca_scaler = True)
-
-    # Initialen Split in Sequenzen schneiden + in Tensordatasets wandeln
+    # Cut initial split in sequences + transform in tensordatasets
     initial_split_sequenced = create_sequences_for_folds(initial_split_preprocessed, sequence_length, target_size, step_size, single_step)
     initial_split_tensordatasets = get_tensordatasets_from_folds(initial_split_sequenced)
 
     final_results = []
 
-    # Naiver Forecast
+    # Naive forecast
     mse_scaled, rmse_scaled, mse_orig, rmse_orig = naive_forecast(initial_split_preprocessed, scalers_y[0])
     rmse_naive_list = [rmse_scaled] * len(seeds) 
     final_results.append({
@@ -759,18 +741,17 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
             set_seed(seed, device)
             console.rule(f"\n[medium_purple]{model.name.upper()} mit Seed {seed}[/medium_purple]")
 
-            #Hyperparametertuning
+            # Hyperparametertuning
             console.print("\n[bold turquoise2]Hyperparametertuning: [/bold turquoise2]")
             study, best_hp = hyperparameter_tuning(model, folds_tensordatasets, seed, device)
             save_best_hp(model, study, seed)
 
 
-             # Finales Modelltraining
+            # Final model training
             console.print("\n[bold turquoise2]Final Training[/bold turquoise2]")
             X_train_seq, _ = initial_split_sequenced[0]["train"]
             amount_features = X_train_seq.shape[2]
             final_model = model(input_size= amount_features, hp=best_hp).to(device)
-            #final_model = torch.compile(final_model)
             criterion = nn.MSELoss()
             optimizer = torch.optim.Adam(final_model.parameters(), lr=best_hp['learning_rate'])
             train_dataset = initial_split_tensordatasets[0]["train"]
@@ -778,13 +759,12 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
             test_dataset = initial_split_tensordatasets[0]["test"]
             train_loader, val_loader, test_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset)
 
-            final_model, train_loss_history, val_loss_history = model_train(final_model, criterion, optimizer, val_loader, train_loader, device, 
-                                                                            num_epochs = 50, patience = 10, seed = seed, final = True)
+            final_model, train_loss_history, val_loss_history = final_train(final_model, criterion, optimizer, val_loader, train_loader, device, 
+                                                                            num_epochs = 50, patience = 10, seed = seed)
             torch.save(final_model.state_dict(), f"saved_models/{final_model.name}_model_final_{seed}.pth")
-            #final_model = load_model(model_class, best_hp, X_train, seed, device)
             train_history_plot(train_loss_history, val_loss_history, final_model, seed)
 
-            # Modellevaluation
+            # Model evaluation
             train_loader, val_loader, test_loader = get_dataloaders(seed, train_dataset, val_dataset, test_dataset, shuffle_train = False)
 
             _, y_test_seq = initial_split_sequenced[0]["test"]
@@ -827,25 +807,18 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
             "p_value": None
             })
 
-            # Residual Plots erstellen
-            #print(splits["test_idx"][0])
+            # Generating residual plots
             plot_residuals_with_index(y_test_seq_rescaled, test_predictions_rescaled, model, df, sequence_length, splits["test_idx"][0], seed)
 
-        
-        # Signifikanz des Modells gegenüber naiver Vorhersage testen
+        # Testing the significance of the model against the naive forecast
         rmses = [entry["rmse_scaled"] for entry in final_results if entry["model"] == model.name]
         stat, p_value = stats.wilcoxon(rmses, rmse_naive_list)
-        #console.print(f"\n[bold turquoise2]p-Value for significance in comparison to naive model: {round(p_value,4)} [/bold turquoise2]")
+        console.print(f"\n[bold turquoise2]p-Value for significance in comparison to naive model: {round(p_value,4)} [/bold turquoise2]")
 
-        
         p_value = round(p_value, 4)
         for entry in final_results:         
             if entry["model"] == model.name:
                  entry["p_value"] = p_value  
-
-                 
-        
-
     
     final_eval_df = pd.DataFrame(final_results)
     return final_eval_df

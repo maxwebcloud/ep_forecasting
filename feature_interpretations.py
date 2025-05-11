@@ -47,12 +47,15 @@ def plot_top_pca_loadings(pca, feature_names, top_percent=0.3):
     plt.xlabel('Principal Components')
     plt.ylabel('Features')
     plt.tight_layout()
+    plt.show()
+    """
     filename = f"top_{top_percent *100}%_loadings.png"
     filepath = os.path.join("plots", filename)
 
     # Save & close
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+    """
 
 # Plot cumulated explained variance over amount of pcs
 def plot_cumulative_explained_variance(pca, threshold_lines=[0.8, 0.9]):
@@ -70,22 +73,25 @@ def plot_cumulative_explained_variance(pca, threshold_lines=[0.8, 0.9]):
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.show()
+    """
     filename = f"cumulative_explained_variance_pca.png"
     filepath = os.path.join("plots", filename)
 
     # Save & close
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+    """
 
 # Wrapper to plot necessary pca information
 def plot_pca_information(df_final, train_frac, val_frac, test_frac,variance_ratio, top_pca_percentage):
 
-    # Daten aufteilen in PCA-Features und Target
+    # Divide data in PCA-features und target
     X = df_final[df_final.columns.drop('price actual')].values
     y = np.array(df_final['price actual']).reshape(-1,1)
     feature_names = df_final[df_final.columns.drop('price actual')].columns
     
-    # Features splitten 
+    # Splitting Features 
     splits = get_time_series_split_indices(len(X), train_frac, val_frac, test_frac)
     initial_split = [{
     "train": (X[splits["train_idx"][0] : splits["train_idx"][1]], y[splits["train_idx"][0] : splits["train_idx"][1]]),
@@ -93,11 +99,11 @@ def plot_pca_information(df_final, train_frac, val_frac, test_frac,variance_rati
     "test": (X[splits["test_idx"][0] : splits["test_idx"][1]], y[splits["test_idx"][0] : splits["test_idx"][1]])
     }]
 
-    # Plot der kummulierten erkläreten Varianz über die PCs hinweg
+    # Plot of the cumulative explained variance across the principal components
     initial_split_preprocessed, pcas, scalers_X, scalers_y = preprocessing(initial_split, variance_ratio = None, return_pca_scaler= True)
     plot_cumulative_explained_variance(pcas[0])
 
-    # Top x% der Features die (im Mittel) am stärksten zu den zu PCs beitragen 
+    # Top x% of features that contribute the most (on average) to the principal components
     initial_split_preprocessed, pcas, scalers_X, scalers_y = preprocessing(initial_split, variance_ratio, return_pca_scaler= True)
     plot_top_pca_loadings(pcas[0], feature_names, top_pca_percentage)
 
@@ -160,13 +166,15 @@ def plot_top_shap_features(shapValues, featureNames, model, seed, topPercent=0.3
     plt.xlabel("Anteil an totaler SHAP-Wichtigkeit (%)")
     plt.title(f"Top {int(topPercent*100)}% wichtigste Features")
     plt.tight_layout()
-
+    plt.show()
+    """
     filename = f"shap_feature_importance_{model.name}_{seed}.png"
     filepath = os.path.join("plots", filename)
 
     # Save & close
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+    """
 
 # Wrapper to apply interpretation with shap values
 def plot_feature_importance_with_shap(model, df_final, train_frac, val_frac, test_frac,variance_ratio, sequence_length, step_size, seed, top_percent, device):

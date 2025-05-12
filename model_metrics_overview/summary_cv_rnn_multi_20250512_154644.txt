@@ -11,12 +11,12 @@ Model: naive
 
 Model: rnn
  Device: cpu
- Seed 81.0: OOS-RMSE (scaled) = 0.02144, OOS-RMSE (original) = 2.30379
+ Seed 81.0: OOS-RMSE (scaled) = 0.01942, OOS-RMSE (original) = 2.08695
  Seed 14.0: OOS-RMSE (scaled) = 0.02155, OOS-RMSE (original) = 2.31612
- Seed 3.0: OOS-RMSE (scaled) = 0.02045, OOS-RMSE (original) = 2.19735
+ Seed 3.0: OOS-RMSE (scaled) = 0.02278, OOS-RMSE (original) = 2.44859
  Seed 94.0: OOS-RMSE (scaled) = 0.02206, OOS-RMSE (original) = 2.37125
  Seed 35.0: OOS-RMSE (scaled) = 0.02100, OOS-RMSE (original) = 2.25638
- Runtime: 41.43 min
- Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0213
- Mean OOS Performance (RMSE original) across 5 seeds: 2.2890
+ Runtime: 46.78 min
+ Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0214
+ Mean OOS Performance (RMSE original) across 5 seeds: 2.2959
  p-Value vs. naive model: 0.0625

@@ -382,12 +382,12 @@ def get_dataloaders(seed, train_dataset, val_dataset, test_dataset=None, shuffle
 # 5. Hyperparamter Tuning 
 # ============================================================================
 
-# Hyperparameter Tuning with Early Stopping
+# Hyperparameter Tuning
 
 def hyperparameter_tuning(Model, folds, seed, device, 
-                          max_epochs=15, patience=3, n_trials=10):
+                          max_epochs=15, n_trials=10):
     """
-    Optuna tuning with Successive-Halving pruner + early stopping.
+    Optuna tuning with Successive-Halving pruner.
     After every epoch we report the mean val-loss over all folds to Optuna.
     """
     import time, numpy as np, torch, optuna, json
@@ -438,7 +438,6 @@ def hyperparameter_tuning(Model, folds, seed, device,
             })
 
         best_val = float("inf")
-        no_improve = 0
 
         for epoch in range(max_epochs):
             losses = []
@@ -446,20 +445,12 @@ def hyperparameter_tuning(Model, folds, seed, device,
                 _train_single_epoch(st["model"], st["tr"], st["opt"], st["crit"])
                 losses.append(_validate(st["model"], st["va"], st["crit"]))
             mean_val = float(np.mean(losses))
+            best_val = min(best_val, mean_val)
 
             # report & prune
             trial.report(mean_val, epoch)
             if trial.should_prune():
                 raise optuna.exceptions.TrialPruned()
-
-            # early stopping
-            if mean_val < best_val - 1e-8:
-                best_val, no_improve = mean_val, 0
-            else:
-                no_improve += 1
-                if no_improve >= patience:
-                    break
-
         return best_val
 
     # Study creation & optimization

@@ -204,24 +204,28 @@ def print_settings():
         batch_size = int(batch_size_match.group(1)) if batch_size_match else "N/A"
         
         # Pruner settings
-        pruner_match = re.search(r'pruner\s*=\s*optuna\.pruners\.HyperbandPruner\s*\(\s*min_resource\s*=\s*(\d+)\s*,\s*max_resource\s*=\s*(\d+)\s*,\s*reduction_factor\s*=\s*(\d+)', hyperparameter_tuning_source)
-        min_resource = int(pruner_match.group(1)) if pruner_match else "N/A"
-        max_resource = int(pruner_match.group(2)) if pruner_match else "N/A"
-        reduction_factor = int(pruner_match.group(3)) if pruner_match else "N/A"
+        min_resource_match       = re.search(r'min_resource\s*=\s*(\d+)', hyperparameter_tuning_source)
+        max_resource_match       = re.search(r'max_epochs\s*=\s*(\d+)', hyperparameter_tuning_source)
+        reduction_factor_match   = re.search(r'reduction_factor\s*=\s*(\d+)', hyperparameter_tuning_source)
+
+        min_resource     = int(min_resource_match.group(1))     if min_resource_match else "N/A"
+        max_resource     = int(max_resource_match.group(1))     if max_resource_match else "N/A"
+        reduction_factor = int(reduction_factor_match.group(1)) if reduction_factor_match else "N/A"
         
         # n_trials
         n_trials_match = re.search(r'n_trials\s*=\s*(\d+)', hyperparameter_tuning_source)
         n_trials = int(n_trials_match.group(1)) if n_trials_match else "N/A"
         
-        # Tuning model_train settings
-        hp_epochs_match = re.search(r'model_train\(.*?num_epochs\s*=\s*(\d+)\s*,\s*patience\s*=\s*(\d+)', hyperparameter_tuning_source, re.DOTALL)
+        # Tuning epochs from hyperparameter_tuning signature (max_epochs)
+        hp_epochs_match = re.search(r'def\s+hyperparameter_tuning.*?max_epochs\s*=\s*(\d+)', hyperparameter_tuning_source, re.DOTALL)
         hp_epochs = int(hp_epochs_match.group(1)) if hp_epochs_match else "N/A"
-        hp_patience = int(hp_epochs_match.group(2)) if hp_epochs_match else "N/A"
+   
         
         # Final training settings
-        final_epochs_match = re.search(r'model_train\(.*?num_epochs\s*=\s*(\d+)\s*,\s*patience\s*=\s*(\d+).*?final\s*=\s*True', cv_time_series_source, re.DOTALL)
-        final_epochs = int(final_epochs_match.group(1)) if final_epochs_match else "N/A"
-        final_patience = int(final_epochs_match.group(2)) if final_epochs_match else "N/A"
+        call_epochs_match   = re.search(r'final_train\s*\(.*?num_epochs\s*=\s*(\d+)', cv_time_series_source, re.DOTALL)
+        call_patience_match = re.search(r'final_train\s*\(.*?patience\s*=\s*(\d+)',   cv_time_series_source, re.DOTALL)
+        final_epochs   = int(call_epochs_match.group(1))   if call_epochs_match else "N/A"
+        final_patience = int(call_patience_match.group(1)) if call_patience_match else "N/A"
 
 
         # Hyperparameter Tuning Settings
@@ -230,8 +234,6 @@ def print_settings():
         print(f"  Pruner min resources:     {min_resource}")
         print(f"  Pruner max resources:     {max_resource}")
         print(f"  Pruner reduction factor:  {reduction_factor}")
-        print(f"  Training epochs:          {hp_epochs}")
-        print(f"  Early stopping patience:  {hp_patience}")
         
         # Final Model Training
         print("\nFinal Model Training")
@@ -337,10 +339,9 @@ for r in results:
 
 
 
-
-# ---------------------------------
+# ============================================================================
 # Print section per model over all seeds
-# ---------------------------------
+# ============================================================================
 for model_name, results_list in processed_results.items():
     rmses_scaled = [rmse_scaled for _, rmse_scaled, _ in results_list]
     rmses_orig = [rmse_orig for _, _, rmse_orig in results_list]
@@ -374,7 +375,7 @@ for model_name, results_list in processed_results.items():
     if model_name.lower() != "naive":           
         row = {"model": model_name}            
         for seed, rmse_scaled, _ in results_list:
-            row[f"seed_{seed}"] = rmse_scaled   
+            row[f"seed_{seed}"] = round(rmse_scaled, 5)
 
         matrix_file = summary_dir / "oos_rmse_matrix.csv"
 
@@ -391,7 +392,7 @@ for model_name, results_list in processed_results.items():
             df_mat = pd.DataFrame([row])
         
         seed_cols          = [c for c in df_mat.columns if c.startswith("seed_")]
-        df_mat["rmse_mean"] = df_mat[seed_cols].mean(axis=1)
+        df_mat["rmse_mean"] = df_mat[seed_cols].mean(axis=1).round(5)
 
         df_mat.to_csv(matrix_file, index=False)
         

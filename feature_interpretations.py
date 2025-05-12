@@ -1,4 +1,4 @@
-# The goal of the following functions is gettingt an insight into the features even though the features are transformed by pca.
+# The goal of the following functions is getting an insight into the features and their importance in the forecasting process even though the features are transformed by pca.
 
 # ============================================================================
 # Imports
@@ -8,14 +8,10 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import pickle
 import shap
 import torch
-import os
 
 from workflowfunction_utils import get_time_series_split_indices, create_sequences_for_folds, preprocessing, load_model
-from models_utils import LSTMModel
-
 
 # ============================================================================
 # Visualize and describe feature transformation with PCA 
@@ -207,12 +203,3 @@ def plot_feature_importance_with_shap(model, df_final, train_frac, val_frac, tes
     shapValues = get_shap_feature_importance(model, X_sample, pcas[0], seqLen = sequence_length, inputDim = amount_features)
     plot_top_shap_features(shapValues, feature_names, model, seed, top_percent)
 
-"""
-# Testweise Ausführung
-
-with open("data/df_final_eng.pkl", "rb") as f:
-    df_final = pickle.load(f)
-
-#plot_pca_information(df_final, train_frac = 0.6, val_frac= 0.2, test_frac= 0.2, variance_ratio = 0.8, top_pca_percentage= 0.3)
-plot_feature_importance_with_shap(LSTMModel, df_final, train_frac = 0.77, val_frac= 0.11, test_frac = 0.12,variance_ratio = 0.8, sequence_length = 24, step_size = 1, seed = 35, top_percent =0.3, device= torch.device("cpu"))
-"""

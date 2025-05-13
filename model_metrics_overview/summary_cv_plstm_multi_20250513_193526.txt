@@ -16,7 +16,7 @@ Model: plstm
  Seed 3.0: OOS-RMSE (scaled) = 0.01916, OOS-RMSE (original) = 2.05908
  Seed 94.0: OOS-RMSE (scaled) = 0.01931, OOS-RMSE (original) = 2.07526
  Seed 35.0: OOS-RMSE (scaled) = 0.02672, OOS-RMSE (original) = 2.87202
- Runtime: 274.18 min
+ Runtime: 268.01 min
  Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0216
  Mean OOS Performance (RMSE original) across 5 seeds: 2.3202
  p-Value vs. naive model: 0.0625

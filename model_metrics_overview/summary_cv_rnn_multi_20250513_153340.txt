@@ -16,7 +16,7 @@ Model: rnn
  Seed 3.0: OOS-RMSE (scaled) = 0.02278, OOS-RMSE (original) = 2.44859
  Seed 94.0: OOS-RMSE (scaled) = 0.02206, OOS-RMSE (original) = 2.37125
  Seed 35.0: OOS-RMSE (scaled) = 0.02100, OOS-RMSE (original) = 2.25638
- Runtime: 46.78 min
+ Runtime: 45.99 min
  Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0214
  Mean OOS Performance (RMSE original) across 5 seeds: 2.2959
  p-Value vs. naive model: 0.0625

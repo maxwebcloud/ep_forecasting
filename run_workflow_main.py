@@ -112,8 +112,8 @@ if USE_CLI:
     parser.add_argument("--mode", choices=list(MODELS.keys()), default="standard")
     parser.add_argument("--device", choices=["cpu", "mps"], default="cpu")
     parser.add_argument(
-        "--global_test",         # reines Flag
-        action="store_true",     # True = Friedman laufen & beenden
+        "--global_test",        
+        action="store_true",     
         help="Führe sofort den globalen Friedman-Test auf oos_rmse_matrix.csv aus"
     )
     args = parser.parse_args()
@@ -138,13 +138,14 @@ def friedman_test(path=Path("model_metrics_overview/oos_rmse_matrix.csv")):
     from scipy.stats import friedmanchisquare
     df = pd.read_csv(path, index_col="model").dropna(axis=1)
     stat, p = friedmanchisquare(*df.to_numpy().T)
-    return stat, p
+    return stat, p 
 
 if args.global_test:
     import sys
 
     matrix_file = Path("model_metrics_overview/oos_rmse_matrix.csv")
     df = pd.read_csv(matrix_file, index_col="model").dropna(axis=1)
+    df = df.iloc[:, 0:5]  
 
     stat, p = friedman_test(matrix_file)
 
@@ -153,11 +154,13 @@ if args.global_test:
     print(f"Seeds  : {list(df.columns)}")
     print(f"χ² = {stat:.3f},  p = {p:.4g}")
 
+    sys.exit(0)   
+
 # ============================================================================
 # Seed Initialization
 # ============================================================================
 SEED = 42
-N_SEEDS = 5
+N_SEEDS = 35
 random.seed(SEED)
 np.random.seed(SEED)
 seeds_list = random.sample(range(0, 100), N_SEEDS)

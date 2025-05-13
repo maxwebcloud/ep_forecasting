@@ -17,7 +17,7 @@ Model: lstm
  Seed 3.0: OOS-RMSE (scaled) = 0.02256, OOS-RMSE (original) = 2.42506
  Seed 94.0: OOS-RMSE (scaled) = 0.02185, OOS-RMSE (original) = 2.34790
  Seed 35.0: OOS-RMSE (scaled) = 0.02262, OOS-RMSE (original) = 2.43086
- Runtime: 28.55 min
+ Runtime: 27.35 min
  Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0228
  Mean OOS Performance (RMSE original) across 5 seeds: 2.4464
  p-Value vs. naive model: 0.0625
@@ -29,7 +29,7 @@ Model: slstm
  Seed 3.0: OOS-RMSE (scaled) = 0.02760, OOS-RMSE (original) = 2.96641
  Seed 94.0: OOS-RMSE (scaled) = 0.03893, OOS-RMSE (original) = 4.18340
  Seed 35.0: OOS-RMSE (scaled) = 0.02366, OOS-RMSE (original) = 2.54315
- Runtime: 44.98 min
+ Runtime: 47.82 min
  Mean Out-of-Sample Performance (RMSE scaled) across 5 seeds: 0.0282
  Mean OOS Performance (RMSE original) across 5 seeds: 3.0266
  p-Value vs. naive model: 0.0625

@@ -121,7 +121,7 @@ def model_predict(inputFlat, finalModel, seqLen, inputDim):
 def get_shap_feature_importance(finalModel, inputSample, pca, seqLen, inputDim):
 
     # SHAP needs 2D: (samples, features) → flatten sequences
-    inputFlat = inputSample.reshape((inputSample.shape[0], inputSample.shape[1]* inputSample.shape[2])) # shape: (inputSample len, 24*16)
+    inputFlat = inputSample.reshape((inputSample.shape[0], inputSample.shape[1]* inputSample.shape[2])) # shape: (inputSample len, seqLength * inputDim)
 
     # use KernelExplainer 
     model_fn = lambda x: model_predict(x, finalModel, seqLen, inputDim)

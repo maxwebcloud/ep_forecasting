@@ -35,12 +35,9 @@ import import_ipynb
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
 
 # Custom Modules
 from phased_lstm_implementation import PLSTM, Model
-import joblib
-scaler_y = joblib.load("data/scaler_y.pkl")
 
 
 
@@ -63,7 +60,7 @@ class SimpleRNN(nn.Module):
 
     def forward(self, x):
         out, _ = self.rnn(x)
-        out = out[:, -1, :]  # Nur der letzte Zeitschritt
+        out = out[:, -1, :]  # give back only the last time step
         out = self.layer_norm(out)
         out = self.dropout1(out)
         out = self.fc1(out)

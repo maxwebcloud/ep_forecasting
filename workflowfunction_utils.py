@@ -106,26 +106,22 @@ def get_time_series_split_indices(n_samples, train_frac=0.7, val_frac=0.15, test
 def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fraction=0.2, 
                                                train_frac=0.8, val_frac=0.2):
     """
-    Splittet Zeitreihen-Daten mit Sliding-Window in train/val für eine gewünschte Anzahl an Folds.
-    Testdaten werden nicht verwendet. Die Fenstergröße wird automatisch bestimmt.
+    Splits time series data into train/validation sets using a sliding window for a desired number of folds.
+    The window size is determined automatically.
 
     Args:
-        data (np.array): Eingabedaten 
-        target (np.array): Zielwerte
-        n_folds (int): Gewünschte Anzahl an Folds
-        slide_fraction (float): Anteil, um den das Fenster pro Fold verschoben wird (z.B. 0.2)
-        train_frac, val_frac (float): Aufteilung des Folds (muss in Summe ≈ 1 sein)
-
+        data (np.array): Input data 
+        target (np.array): Target
+        n_folds (int): Specified number of folds
+        slide_fraction (float): Fraction by which the window is shifted per fold (e.g. 0.2)
+        train_frac, val_frac (float): Fractions used to split each fold (must sum to 1)
     Returns:
-        list of dicts: train/val Splits für jeden Fold
+        list of dicts: train/val splits for every fold
     """
     data_len = len(data)
     fold_data = []
 
-    total_frac = train_frac + val_frac
-    assert np.isclose(total_frac, 1.0), "train + val fractions müssen 1 ergeben"
-
-    # Automatische Fenstergröße
+    # Determine window size automatically
     window_size = int(data_len / (1 + (n_folds - 1) * slide_fraction))
     slide_step = int(window_size * slide_fraction)
 
@@ -156,12 +152,12 @@ def split_data_time_series_sliding_auto_folds(data, target, n_folds=5, slide_fra
 
 def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
     """
-    Fit MinMaxScaler für Features (X) und Zielvariable (y) auf Trainingsdaten.
+    Fit MinMaxScaler for features (X) und target (y) in train data.
 
     Args:
-        X_train (np.array oder pd.DataFrame): Feature-Matrix
-        y_train (np.array oder pd.Series): Zielvektor
-        feature_range (tuple): Wertebereich für Skalierung
+        X_train (np.array oder pd.DataFrame): feature matrix
+        y_train (np.array oder pd.Series): target vector
+        feature_range (tuple): range for scaling
 
     Returns:
         tuple: (X_scaler, y_scaler)
@@ -170,36 +166,41 @@ def fit_minmax_scalers(X_train, y_train, feature_range=(0, 1)):
     scaler_y = MinMaxScaler(feature_range=feature_range)
 
     scaler_X.fit(X_train)
-    scaler_y.fit(y_train.reshape(-1, 1))  # reshape für Kompatibilität
+    scaler_y.fit(y_train.reshape(-1, 1))  # Reshape for compatibility
 
     return scaler_X, scaler_y
 
 
 def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
     """
-    Skaliert und transformiert die Daten in jedem Fold:
-    - Skaliert X und y separat per MinMaxScaler
-    - Führt PCA auf X durch (trainiert auf X_train)
-    - Hängt y als zusätzliches Feature an die PCA-Komponenten
+    Scales and transforms the data within each fold:
+        Scales X and y separately using MinMaxScaler
+        Applies PCA to X (fitted on X_train)
+        Appends y as an additional feature to the PCA components
 
     Args:
-        folds (list of dicts): Fold-Daten mit train/val(/test)
-        variance_ratio (float): Beibehaltener Varianzanteil für PCA
+        folds (list of dicts): Fold data containing train/val(/test) sets
+        variance_ratio (float): Retained variance ratio for PCA
+        return_pca_scaler (boolean): Determin wheather fitted scalers and pca should be returned
 
     Returns:
-        list of dicts: Preprozessierte Folds
+    list of dicts: Preprocessed folds
+    If `return_pca_scaler` is True, also returns:
+            list of PCA objects,
+            list of fitted X scalers (MinMaxScaler),
+            list of fitted y scalers (MinMaxScaler).
     """
     processed_folds = []
     pcas, scalers_X, scalers_y = [], [], []
         
 
     for fold in folds:
-        # Daten extrahieren
+        # Extract data
         X_train, y_train = fold["train"]
         X_val, y_val = fold["val"]
         X_test, y_test = fold.get("test", (None, None))  # optional
 
-        # Skalierung
+        # Scaling
         scaler_X, scaler_y = fit_minmax_scalers(X_train, y_train)
         X_train = scaler_X.transform(X_train)
         y_train = scaler_y.transform(y_train) 
@@ -218,7 +219,7 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
             X_test = pca.transform(X_test)
    
 
-        # y als Feature anhängen
+        # Appends y as an additional feature to the PCA components
         X_train = np.concatenate((X_train, y_train), axis=1)
         X_val = np.concatenate((X_val, y_val), axis=1)
         if X_test is not None:
@@ -249,17 +250,18 @@ def preprocessing(folds, variance_ratio=0.8, return_pca_scaler= False):
 
 def create_sequences_for_folds(folds, history_size, target_size, step, single_step):
     """
-    Erstellt Sequenzen aus jedem Fold für train/val und optional test.
+    Creates input/target sequences for each fold's train/val and optionally test split.
 
     Args:
-        folds (list of dicts): Liste von Folds mit "train", "val" und ggf. "test"
-        history_size (int): Eingabesequenz-Länge
-        target_size (int): Zielsequenz-Länge
-        step (int): Schrittweite in der Eingabesequenz
-        single_step (bool): Ob nur ein Zielwert vorhergesagt wird
+        folds (list of dicts): List of folds containing "train", "val", and optionally "test" data.
+        history_size (int): Length of the input sequence.
+        target_size (int): Length of the target sequence.
+            Set to 0 if you want the target to be the immediate next observation after the input sequence.
+        step (int): Step size within the input sequence.
+        single_step (bool): Whether only a single target value is predicted (True) or a sequence (False).
 
     Returns:
-        list of dicts: Jeder Fold enthält sequenzierte Daten pro Split
+        list of dicts: Each fold contains sequenced data for each available split.
     """
     sequenced_folds = []
 
@@ -280,18 +282,18 @@ def create_sequences_for_folds(folds, history_size, target_size, step, single_st
 
 def create_sequences(X, y, history_size, target_size, step, single_step):
     """
-    Erstellt Sequenzen aus gegebenen Features (X) und Zielwerten (y).
+    Creates sequences from given features (X) and targets (y).
 
     Args:
-        X (np.array): Eingabedaten (z.B. X_train, X_val, X_test)
-        y (np.array): Zielwerte (z.B. y_train, y_val, y_test)
-        history_size (int): Länge der Eingabesequenz
-        target_size (int): Länge der Zielsequenz
-        step (int): Schrittweite innerhalb der Eingabesequenz
-        single_step (bool): Wenn True, nimm nur einen Zielwert, sonst Sequenz
+        X (np.array): Input data (e.g., X_train, X_val, X_test)
+        y (np.array): Target values (e.g., y_train, y_val, y_test)
+        history_size (int): Length of the input sequence
+        target_size (int): Length of the target sequence
+        step (int): Step size within the input sequence
+        single_step (bool): If True, use a single target value; otherwise, use a sequence
 
     Returns:
-        Tuple (np.array, np.array): Sequenzen (samples, timesteps, features), Zielwerte
+        Tuple (np.array, np.array): Sequences (samples, timesteps, features), target values
     """
     data = []
     labels = []
@@ -312,13 +314,13 @@ def create_sequences(X, y, history_size, target_size, step, single_step):
 
 def get_tensordatasets_from_folds(folds):
     """
-    Konvertiert alle Splits in jedem Fold zu TensorDatasets.
+    Converts all splits in each fold into TensorDatasets.
 
     Args:
-        folds (list of dicts): Jeder Fold enthält "train", "val" und optional "test"
+        folds (list of dicts): Each fold contains "train", "val", and optionally "test" splits.
 
     Returns:
-        list of dicts: Jeder Fold enthält TensorDatasets für "train", "val" und ggf. "test"
+        list of dicts: Each fold contains TensorDatasets for "train", "val", and optionally "test".
     """
     tensor_folds = []
 
@@ -481,7 +483,7 @@ def hyperparameter_tuning(Model, folds, seed, device,
 
 
 
-# save best hyperparameters
+# Save best hyperparameters
 def save_best_hp(model, study, SEED):
     best_hp = study.best_trial.params
     with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "w") as f:
@@ -491,13 +493,13 @@ def save_best_hp(model, study, SEED):
 # 7. Final Model Trainng 
 # ============================================================================
 
-# load best hyperparameters 
+# Load best hyperparameters 
 def load_best_hp(model, SEED):
     with open(f"best_hp_all_models/best_hp_{model.name}_{SEED}.json", "r") as f:
         best_hp = json.load(f)
     return best_hp
 
-# final model training
+# Final model training
 def final_train(model, criterion, optimizer, val_loader, train_loader, device, num_epochs, patience, seed):
     import time
     
@@ -560,7 +562,7 @@ def final_train(model, criterion, optimizer, val_loader, train_loader, device, n
     return best_model, train_loss_history, val_loss_history
 
     
-
+# Plot training and validation loss over the training process
 def train_history_plot(train_loss_history, val_loss_history, model, SEED):
     plt.figure(figsize=(8, 5))
     plt.plot(train_loss_history, label="Train Loss")
@@ -651,7 +653,7 @@ def plot_residuals_with_index(y_true, y_pred, model, df_final,seq_length, test_i
     plt.close()
 
 
-# load trained model  
+# Load trained model  
 def load_model(model, input_size, seed, device):
     hp = load_best_hp(model, seed)
     model_final = model(input_size=input_size, hp=hp).to(device)
@@ -671,7 +673,7 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
     
     console = Console() 
 
-    # Splittinh the data in target und features +  trainings-, val- und testset
+    # Splitting the data in target und features +  trainings-, val- und testset
     X = df[df.columns.drop('price actual')].values
     y = np.array(df['price actual']).reshape(-1,1)
     n = len(X)  
@@ -815,16 +817,3 @@ def cross_validate_time_series(models, seeds, df, device , train_size=0.6, val_s
     return final_eval_df
 
 
-#testweise Ausführung 
-
-
-"""
-with open("data/df_final_eng.pkl", "rb") as f:
-        df_final = pickle.load(f)
-
-
-
-results = cross_validate_time_series([LSTMModel], [81], df_final, torch.device("cpu"))
-print(results)
-
-"""

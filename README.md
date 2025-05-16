@@ -21,7 +21,7 @@ PLSTM implementation adapted from:
   Central CLI script that spawns separate Python processes to train and evaluate each model under cross-validation for full reproducibility
 
 - **`models_utils.py`**  
-  Defines RNN-based model classes, their architectures, hyperparameter search spaces, and training/inference helper functions
+  Defines RNN-based model classes, their architectures, hyperparameter search spaces
 
 - **`workflowfunction_utils.py`**  
   Provides data loading, train/validation/test splitting, scaling, PCA, PyTorch DataLoader construction, metrics (RMSE matrix), in the `cross_validate_time_series()` wrapper

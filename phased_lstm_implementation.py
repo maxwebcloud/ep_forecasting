@@ -1,3 +1,12 @@
+"""
+Phased-LSTM model implementation adapted from:
+
+YellowRobot Share, 2022. Index of /1658316327-phased (model_3_PLSTM.py),
+    available at: http://share.yellowrobot.xyz/1658316327-phased/ (Last access on May 12, 2025)
+
+YellowRobot.XYZ, 2021. Diff #21 – PyTorch Phased-LSTM implementation from scratch,
+    available at: https://www.youtube.com/watch?v=So4Ro2CfZZY (Last access on May 12, 2025)
+"""
 
 
 import torch

@@ -88,7 +88,7 @@ class LSTMModel(nn.Module):
         return{
             'lstm_units': trial.suggest_int('lstm_units', 32, 256, step=16),
             'dropout_rate_lstm': trial.suggest_float('dropout_rate_lstm', 0.1, 0.5, step=0.1),
-            'dense_units': trial.suggest_int('dense_units', 16, 64, step=16),
+            'dense_units': trial.suggest_int('dense_units', 8, 64, step=8),
             'dropout_rate_dense': trial.suggest_float('dropout_rate_dense', 0.0, 0.4, step=0.1),
             'learning_rate': trial.suggest_categorical('learning_rate', [1e-3, 1e-4])
         }

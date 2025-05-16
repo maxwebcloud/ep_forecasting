@@ -2,7 +2,6 @@ name: ep_forecasting_env
 channels:
   - conda-forge
   - pytorch
-  - defaults
 dependencies:
   - python=3.9
   - numpy
@@ -11,11 +10,10 @@ dependencies:
   - seaborn
   - scikit-learn
   - statsmodels
+  - scipy
   - optuna
   - joblib
   - pytorch
-  - torchvision
-  - torchaudio
   - sqlite
   - ipython
   - ipykernel        

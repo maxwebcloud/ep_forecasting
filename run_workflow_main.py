@@ -22,8 +22,8 @@ Available CLI options:
 --mode      (str) : Select which model(s) to run. Choices:
     - "standard"   → Runs all four models (rnn, lstm, slstm, plstm)
     - "3models"    → Runs rnn, lstm, and slstm (excludes plstm)
-    - "half_a_gpu"     → Runs lstm and slstm (50 / 50 split, LSTM‑heavy)
-    - "half_b_cpu"     → Runs rnn and plstm (50 / 50 split, RNN‑heavy)
+    - "half_a_gpu"     → Runs lstm and slstm 
+    - "half_b_cpu"     → Runs rnn and plstm 
     - "rnn"        → Runs only the SimpleRNN model
     - "lstm"       → Runs only the LSTM model
     - "slstm"      → Runs only the StackedLSTM model
@@ -34,7 +34,7 @@ Available CLI options:
     - "mps"        → Use Apple MPS backend if available (for Apple Silicon GPUs)
 
     
---global_test     : Run global friedman tesst 
+--global_test     : Run global friedman test 
 
 
 
@@ -57,7 +57,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 
 # Standard Libraries
-from re import S
+import sys    
+import re     
 import random
 import time
 import pickle
@@ -113,8 +114,7 @@ if USE_CLI:
     parser.add_argument("--device", choices=["cpu", "mps"], default="cpu")
     parser.add_argument(
         "--global_test",        
-        action="store_true",     
-        help="Führe sofort den globalen Friedman-Test auf oos_rmse_matrix.csv aus"
+        action="store_true"
     )
     args = parser.parse_args()
 
@@ -128,11 +128,9 @@ else:
 
 selected_models = MODELS[mode]
 
-
-
-# ------------------------------------------------------------------
+# ============================================================================
 # Global-Test-Only:  python run_workflow_main.py --global_test
-# ------------------------------------------------------------------
+# ============================================================================
 def friedman_test(path=Path("model_metrics_overview/oos_rmse_matrix.csv")):
     import pandas as pd
     from scipy.stats import friedmanchisquare
@@ -141,7 +139,6 @@ def friedman_test(path=Path("model_metrics_overview/oos_rmse_matrix.csv")):
     return stat, p 
 
 if args.global_test:
-    import sys
 
     matrix_file = Path("model_metrics_overview/oos_rmse_matrix.csv")
     df = pd.read_csv(matrix_file, index_col="model").dropna(axis=1)
@@ -149,8 +146,8 @@ if args.global_test:
 
     stat, p = friedman_test(matrix_file)
 
-    print("\n=== Globaler Friedman-Test ===")
-    print(f"Modelle: {list(df.index)}")
+    print("\n=== Global Friedman-Test ===")
+    print(f"Models: {list(df.index)}")
     print(f"Seeds  : {list(df.columns)}")
     print(f"χ² = {stat:.3f},  p = {p:.4g}")
 
@@ -160,7 +157,7 @@ if args.global_test:
 # Seed Initialization
 # ============================================================================
 SEED = 42
-N_SEEDS = 35
+N_SEEDS = 5
 random.seed(SEED)
 np.random.seed(SEED)
 seeds_list = random.sample(range(0, 100), N_SEEDS)
@@ -273,7 +270,7 @@ device = get_device(use_gpu=use_gpu)
 # ============================================================================
 # Model Training & Cross-Validation
 # ============================================================================
-model_runtimes = {}          # model_name  ->  minutes
+model_runtimes = {}          
 start_time = time.time()
 results = []
 
@@ -281,38 +278,39 @@ for model_class in selected_models:
     model_name = getattr(model_class, "name", model_class.__name__)
     model_start = time.perf_counter() 
     
-    # MPS memory is cleared before each model if using MPS
+    # MPS memory is cleared before each model if using MPS (so it can be used in one process)
     if device.type == "mps":
         # Force garbage collection to free up memory
         import gc
         gc.collect()
         torch.mps.empty_cache()
-        assert torch.mps.current_allocated_memory() == 0, "⚠️ MPS memory not cleared!"
+        assert torch.mps.current_allocated_memory() == 0, "MPS memory not cleared!"
 
     # Update the function call to match the signature in workflowfunctions_utils.py
     model_results = cross_validate_time_series(
         models=[model_class],
         seeds=seeds_list,
         df= df_final, 
-        device=device,                  # Same device for all operations
+        device=device,                  # Same (selected) device for all operations
         train_size=CV_PARAMS["train_size"],
         val_size=CV_PARAMS["val_size"],
         test_size=CV_PARAMS["test_size"],
         sequence_length=CV_PARAMS["sequence_length"],
         step_size=CV_PARAMS["step_size"],
         n_folds=CV_PARAMS["n_folds"],
-        variance_ratio=CV_PARAMS["variance_ratio"],        single_step=CV_PARAMS["single_step"]
+        variance_ratio=CV_PARAMS["variance_ratio"],        
+        single_step=CV_PARAMS["single_step"]
     )
 
     model_end = time.perf_counter()       
     model_runtimes[model_name] = (model_end - model_start) / 60  
 
-
-    # Handle the results which might be a DataFrame
+    #Handle results type 
     if isinstance(model_results, pd.DataFrame):
         results.extend(model_results.to_dict('records'))
     else:
         results.extend(model_results)
+
 
 # ============================================================================
 # Evaluation Summary
@@ -385,7 +383,7 @@ for model_name, results_list in processed_results.items():
         if matrix_file.exists():
             df_mat = pd.read_csv(matrix_file)
 
-            # Modell-Zeile überschreiben oder anhängen
+            # Overwrite or append the model row
             if model_name in df_mat["model"].values:
                 df_mat.loc[df_mat["model"] == model_name, row.keys()] = row.values()
             else:
@@ -399,13 +397,11 @@ for model_name, results_list in processed_results.items():
 
         df_mat.to_csv(matrix_file, index=False)
         
-# ---------------------------------
 # Join to single string
-# ---------------------------------
 summary_text = "\n".join(summary_lines)
 
 # ============================================================================
-# Save Results in .txt file which will be summarized later 
+# Save Results in .txt file
 # ============================================================================
 print(summary_text)
 summary_dir.mkdir(exist_ok=True)
